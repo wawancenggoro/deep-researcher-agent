@@ -92,6 +92,10 @@ vi.mock('@/shared/context', () => ({
 // Mock the file upload hooks
 const mockUploadFiles = vi.fn()
 
+let mockImageAttachments: unknown[] = []
+const mockRemoveImageAttachment = vi.fn()
+const mockClearImageAttachments = vi.fn()
+
 vi.mock('@/features/documents', () => ({
   useFileUpload: vi.fn(() => ({
     uploadFiles: mockUploadFiles,
@@ -111,6 +115,14 @@ vi.mock('@/features/documents', () => ({
     },
   })),
   useFileUploadBanners: vi.fn(),
+  useImageAttachmentsStore: vi.fn((selector) =>
+    selector({
+      attachments: mockImageAttachments,
+      removeAttachment: mockRemoveImageAttachment,
+      clearAttachmentsForCollection: mockClearImageAttachments,
+    })
+  ),
+  isImageFile: (name: string) => /\.(png|jpe?g)$/i.test(name),
 }))
 
 import { useChat, useWebSocketChat, useIsCurrentSessionBusy } from '@/features/chat'
@@ -123,6 +135,7 @@ describe('InputArea', () => {
     mockDeepResearchStatus = null
     mockDeepResearchOwnerConversationId = null
     mockConversationMessages = []
+    mockImageAttachments = []
     // Reset mocks to defaults - clearAllMocks doesn't reset mockReturnValue
     vi.mocked(useIsCurrentSessionBusy).mockReturnValue(false)
     vi.mocked(useChat).mockReturnValue({
@@ -211,7 +224,7 @@ describe('InputArea', () => {
     await user.type(input, 'Hello world')
     await user.click(screen.getByRole('button', { name: /send message/i }))
 
-    expect(mockSendMessage).toHaveBeenCalledWith('Hello world')
+    expect(mockSendMessage).toHaveBeenCalledWith('Hello world', { images: [] })
   })
 
   test('clears input after sending message', async () => {
@@ -232,7 +245,7 @@ describe('InputArea', () => {
     const input = screen.getByRole('textbox')
     await user.type(input, 'Hello world{enter}')
 
-    expect(mockSendMessage).toHaveBeenCalledWith('Hello world')
+    expect(mockSendMessage).toHaveBeenCalledWith('Hello world', { images: [] })
   })
 
   test('disables input when session is busy (streaming)', () => {
@@ -326,6 +339,69 @@ describe('InputArea', () => {
 
     expect(mockRespondToInteraction).toHaveBeenCalledWith('My response')
     expect(mockSendMessage).not.toHaveBeenCalled()
+  })
+
+  describe('image attachments', () => {
+    const attachment = (id: string, status: string, collectionName = 'session-1') => ({
+      id,
+      fileName: `${id}.png`,
+      previewUrl: `blob:${id}`,
+      status,
+      collectionName,
+    })
+
+    test('shows thumbnails for the current session only, with a spinner while uploading', () => {
+      mockImageAttachments = [
+        attachment('img-1', 'uploading'),
+        attachment('img-2', 'uploaded'),
+        attachment('other', 'uploaded', 'session-2'),
+      ]
+
+      render(<InputArea isAuthenticated={true} />)
+
+      expect(screen.getByAltText('img-1.png')).toBeInTheDocument()
+      expect(screen.getByAltText('img-2.png')).toBeInTheDocument()
+      expect(screen.queryByAltText('other.png')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Uploading img-1.png')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Uploading img-2.png')).not.toBeInTheDocument()
+    })
+
+    test('disables send while an image is uploading', async () => {
+      const user = userEvent.setup()
+      mockImageAttachments = [attachment('img-1', 'uploading')]
+
+      render(<InputArea isAuthenticated={true} connectionMode="sse" />)
+      await user.type(screen.getByRole('textbox'), 'Hello')
+
+      expect(screen.getByRole('button', { name: /send message/i })).toBeDisabled()
+    })
+
+    test('removes an uploaded image when its remove button is clicked', async () => {
+      const user = userEvent.setup()
+      mockImageAttachments = [attachment('img-1', 'uploaded')]
+
+      render(<InputArea isAuthenticated={true} />)
+      await user.click(screen.getByRole('button', { name: 'Remove img-1.png' }))
+
+      expect(mockRemoveImageAttachment).toHaveBeenCalledWith('img-1')
+    })
+
+    test('sends uploaded image thumbnails with the message and clears the composer', async () => {
+      const user = userEvent.setup()
+      mockImageAttachments = [
+        { ...attachment('img-1', 'uploaded'), thumbnailUrl: 'data:image/jpeg;base64,AAA' },
+        attachment('img-2', 'failed'),
+      ]
+
+      render(<InputArea isAuthenticated={true} connectionMode="sse" />)
+      await user.type(screen.getByRole('textbox'), 'Hello')
+      await user.click(screen.getByRole('button', { name: /send message/i }))
+
+      expect(mockClearImageAttachments).toHaveBeenCalledWith('session-1')
+      expect(mockSendMessage).toHaveBeenCalledWith('Hello', {
+        images: [{ id: 'img-1', fileName: 'img-1.png', url: 'data:image/jpeg;base64,AAA' }],
+      })
+    })
   })
 
   test('shows file count badge when files are attached', () => {
@@ -425,7 +501,7 @@ describe('InputArea', () => {
     await user.type(textbox, 'Make the report shorter')
     await user.click(screen.getByRole('button', { name: /send message/i }))
 
-    expect(mockSendMessage).toHaveBeenCalledWith('Make the report shorter')
+    expect(mockSendMessage).toHaveBeenCalledWith('Make the report shorter', { images: [] })
   })
 
   test('shows research in progress send button when deep research is active and streaming', () => {

@@ -38,6 +38,7 @@ import type {
   DeepResearchFile,
   DeepResearchBannerType,
   DeepResearchTodo,
+  MessageImage,
 } from './types'
 import { getErrorMeta } from './lib/error-registry'
 import {
@@ -756,6 +757,7 @@ export const useChatStore = create<ChatStore>()(
           metadata?: {
             enabledDataSources?: string[]
             messageFiles?: Array<{ id: string; fileName: string }>
+            messageImages?: MessageImage[]
             selectedModel?: string
           }
         ) => {
@@ -782,6 +784,7 @@ export const useChatStore = create<ChatStore>()(
             messageType: 'user',
             enabledDataSources: metadata?.enabledDataSources,
             messageFiles: metadata?.messageFiles,
+            messageImages: metadata?.messageImages,
             selectedModel: metadata?.selectedModel,
           }
           // Update title on first user message (ignore file_upload_status and other system messages)

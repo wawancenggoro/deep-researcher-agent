@@ -387,7 +387,13 @@ const MessageRenderer: FC<MessageRendererProps> = ({
 
   switch (messageType) {
     case 'user':
-      return <UserMessage content={message.content} timestamp={message.timestamp} />
+      return (
+        <UserMessage
+          content={message.content}
+          timestamp={message.timestamp}
+          images={message.messageImages}
+        />
+      )
 
     case 'status':
       if (!message.statusType) {

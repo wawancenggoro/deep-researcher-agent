@@ -30,6 +30,13 @@ export const DEFAULT_ACCEPTED_MIME_TYPES = [
   'text/x-markdown',
 ]
 
+/** Extensions that are uploaded but not added to the knowledge base (images) */
+export const IMAGE_FILE_TYPES = ['.png', '.jpg', '.jpeg']
+
+/** True if the file is uploaded only and never appears in the knowledge base */
+export const isImageFile = (fileName: string): boolean =>
+  IMAGE_FILE_TYPES.some((ext) => fileName.toLowerCase().endsWith(ext))
+
 // Legacy exports for backward compatibility (use AppConfig where possible)
 /** @deprecated Use AppConfig.fileUpload.maxFileSize instead */
 export const MAX_FILE_SIZE = DEFAULT_MAX_FILE_SIZE

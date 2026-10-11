@@ -15,6 +15,11 @@ export {
   selectCompletedFiles,
   selectFailedFiles,
 } from './store'
+export {
+  useImageAttachmentsStore,
+  type ImageAttachment,
+  type ImageAttachmentStatus,
+} from './image-attachments-store'
 
 // Hooks
 export { useFileUpload, useFileDragDrop, useFileUploadBanners } from './hooks'
@@ -50,6 +55,8 @@ export {
   DEFAULT_MAX_FILE_COUNT,
   DEFAULT_ACCEPTED_FILE_TYPES,
   DEFAULT_ACCEPTED_MIME_TYPES,
+  IMAGE_FILE_TYPES,
+  isImageFile,
   // Legacy exports (deprecated, use AppConfig.fileUpload instead)
   MAX_FILE_SIZE,
   MAX_TOTAL_SIZE,

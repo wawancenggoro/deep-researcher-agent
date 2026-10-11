@@ -23,6 +23,9 @@ import { validateFileUpload, type ValidationContext } from '../validation'
 import { UploadOrchestrator } from '../orchestrator'
 import { markSessionHasCollection } from '../persistence'
 import { useChatStore } from '@/features/chat'
+import { isImageFile } from '../constants'
+import { useImageAttachmentsStore } from '../image-attachments-store'
+import { createImageThumbnail } from '../image-thumbnail'
 
 interface UseFileUploadOptions {
   sessionId?: string
@@ -136,6 +139,42 @@ export const useFileUpload = (options: UseFileUploadOptions = {}): UseFileUpload
     [setCurrentCollection, setCollectionInfo]
   )
 
+  // Upload images as composer attachments. The backend only saves them, so the
+  // upload POST completing means they're done; no ingestion polling needed.
+  const uploadImages = useCallback(
+    async (images: File[], collectionName: string) => {
+      const { addAttachment, updateAttachment } = useImageAttachmentsStore.getState()
+      const ids = images.map((image) => {
+        const id = uuidv4()
+        addAttachment({
+          id,
+          fileName: image.name,
+          previewUrl: URL.createObjectURL(image),
+          status: 'uploading',
+          collectionName,
+        })
+        return id
+      })
+
+      // Thumbnails are generated alongside the upload; the attachment is only
+      // marked uploaded once both are done, so a sent message always has them
+      const thumbnails = Promise.all(images.map((image) => createImageThumbnail(image)))
+
+      try {
+        await ensureCollectionExists(collectionName)
+        await clientRef.current.uploadFiles(collectionName, images)
+        const thumbnailUrls = await thumbnails
+        ids.forEach((id, index) =>
+          updateAttachment(id, { status: 'uploaded', thumbnailUrl: thumbnailUrls[index] })
+        )
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Upload failed'
+        ids.forEach((id) => updateAttachment(id, { status: 'failed', errorMessage: message }))
+      }
+    },
+    [ensureCollectionExists]
+  )
+
   const uploadFiles = useCallback(
     async (files: File[], targetSessionId?: string) => {
       if (files.length === 0) return
@@ -160,7 +199,26 @@ export const useFileUpload = (options: UseFileUploadOptions = {}): UseFileUpload
         return
       }
 
-      const validFiles = validationResult.validFiles
+      // Images are uploaded but not ingested: show them as composer attachments,
+      // not in the Files tab, and don't poll for ingestion
+      const imageFiles = validationResult.validFiles.filter((f) => isImageFile(f.name))
+      const validFiles = validationResult.validFiles.filter((f) => !isImageFile(f.name))
+
+      if (validationResult.fileErrors.length === 0) {
+        clearError()
+      }
+
+      if (imageFiles.length > 0) {
+        void uploadImages(imageFiles, collectionName)
+      }
+
+      if (validFiles.length === 0) {
+        if (validationResult.fileErrors.length > 0) {
+          setError(validationResult.summary)
+        }
+        return
+      }
+
       setUploading(true)
 
       if (validationResult.fileErrors.length > 0) {
@@ -169,8 +227,6 @@ export const useFileUpload = (options: UseFileUploadOptions = {}): UseFileUpload
         setError(
           `Uploading ${uploadingCount} file${uploadingCount > 1 ? 's' : ''}, skipped ${skippedCount} (${validationResult.summary})`
         )
-      } else {
-        clearError()
       }
 
       const trackedFileMap: Map<string, TrackedFile> = new Map()
@@ -257,6 +313,7 @@ export const useFileUpload = (options: UseFileUploadOptions = {}): UseFileUpload
       validationContext,
       fileUploadConfig,
       ensureCollectionExists,
+      uploadImages,
       addTrackedFile,
       updateTrackedFile,
       setUploading,

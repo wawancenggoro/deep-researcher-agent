@@ -47,6 +47,7 @@ import type {
   StatusType,
   ThinkingStep,
   ErrorCode,
+  MessageImage,
 } from '../types'
 import {
   parseFunctionName,
@@ -219,9 +220,14 @@ interface UseWebSocketChatOptions {
   autoConnect?: boolean
 }
 
+interface SendMessageOptions {
+  /** Images attached in the composer, shown above the user message */
+  images?: MessageImage[]
+}
+
 interface UseWebSocketChatReturn {
   /** Send a message via WebSocket */
-  sendMessage: (content: string) => void
+  sendMessage: (content: string, options?: SendMessageOptions) => void
   /** Respond to a pending interaction (clarification, approval, etc.) */
   respondToInteraction: (response: string) => void
   /** Disconnect from the WebSocket server */
@@ -1191,7 +1197,7 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
    * Send a message via WebSocket
    */
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, options?: SendMessageOptions) => {
       if (!content.trim()) return
 
       // Collect metadata about data sources and files before adding user message
@@ -1224,6 +1230,7 @@ export const useWebSocketChat = (options: UseWebSocketChatOptions = {}): UseWebS
       addUserMessage(content, {
         enabledDataSources: dataSourcesForMessage,
         messageFiles,
+        messageImages: options?.images?.length ? options.images : undefined,
         selectedModel: layoutState.selectedModel,
       })
 

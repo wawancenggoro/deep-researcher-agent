@@ -47,6 +47,27 @@ Line 3`
     expect(container.textContent).toContain('const x = 1')
   })
 
+  test('renders attached images above the message bubble', () => {
+    render(
+      <UserMessage
+        content="can you see the image?"
+        images={[{ id: 'img-1', fileName: 'robot.png', url: 'data:image/jpeg;base64,AAA' }]}
+      />
+    )
+
+    const image = screen.getByAltText('robot.png')
+    expect(image).toHaveAttribute('src', 'data:image/jpeg;base64,AAA')
+    // Image comes before the text in document order
+    const text = screen.getByText('can you see the image?')
+    expect(image.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  test('renders no images when none are attached', () => {
+    render(<UserMessage content="Hello" />)
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
   test('displays timestamp when provided', () => {
     const timestamp = new Date('2024-01-15T14:30:00')
 

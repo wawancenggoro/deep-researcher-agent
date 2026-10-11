@@ -16,13 +16,37 @@
 
 'use client'
 
-import { type FC, memo, useState, useCallback, useRef, useEffect, type KeyboardEvent } from 'react'
-import { Flex, Text, Button, TextArea, Banner, Popover } from '@/adapters/ui'
+import {
+  type FC,
+  memo,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useEffect,
+  type KeyboardEvent,
+} from 'react'
+import { Flex, Text, Button, TextArea, Banner, Popover, Spinner } from '@/adapters/ui'
 import { useWebSocketChat, useChatStore, useIsCurrentSessionBusy } from '@/features/chat'
 import { useLayoutStore } from '../store'
 import { useAppConfig } from '@/shared/context'
-import { useFileUpload, useFileDragDrop, useFileUploadBanners } from '@/features/documents'
-import { Globe, Document, Paperclip, Paperplane, Cancel, StopCircle } from '@/adapters/ui/icons'
+import {
+  useFileUpload,
+  useFileDragDrop,
+  useFileUploadBanners,
+  useImageAttachmentsStore,
+  isImageFile,
+} from '@/features/documents'
+import {
+  Globe,
+  Document,
+  Paperclip,
+  Paperplane,
+  Cancel,
+  StopCircle,
+  Close,
+  Warning,
+} from '@/adapters/ui/icons'
 
 /** Connection mode for the chat */
 export type ConnectionMode = 'sse' | 'websocket'
@@ -109,6 +133,16 @@ export const InputArea: FC<InputAreaProps> = memo(function InputArea({
 
   // File upload banner hook - monitors file status and triggers banner messages in chat
   useFileUploadBanners()
+
+  // Image attachments for the current session (shown as thumbnails above the input)
+  const allImageAttachments = useImageAttachmentsStore((s) => s.attachments)
+  const removeImageAttachment = useImageAttachmentsStore((s) => s.removeAttachment)
+  const clearImageAttachments = useImageAttachmentsStore((s) => s.clearAttachmentsForCollection)
+  const imageAttachments = useMemo(
+    () => allImageAttachments.filter((a) => a.collectionName === currentConversation?.id),
+    [allImageAttachments, currentConversation?.id]
+  )
+  const isImageUploading = imageAttachments.some((a) => a.status === 'uploading')
 
   // -- Pending files warning state --
   // Tracks whether we've shown the pending-files warning for the current upload batch.
@@ -208,7 +242,7 @@ export const InputArea: FC<InputAreaProps> = memo(function InputArea({
   }
 
   const handleSubmit = useCallback(async () => {
-    if (!message.trim() || disabled) return
+    if (!message.trim() || disabled || isImageUploading) return
     const currentMessage = message.trim()
 
     // HITL responses always go through immediately — no file-pending check
@@ -236,12 +270,20 @@ export const InputArea: FC<InputAreaProps> = memo(function InputArea({
       setPendingFilesWarningActive(false)
     }
 
-    // Proceed with normal send
+    // Proceed with normal send; attached images move from the composer to the message
+    const images = imageAttachments
+      .filter((a) => a.status === 'uploaded' && a.thumbnailUrl)
+      .map((a) => ({ id: a.id, fileName: a.fileName, url: a.thumbnailUrl as string }))
     setMessage('')
-    await sendMessage(currentMessage)
+    if (currentConversation) clearImageAttachments(currentConversation.id)
+    await sendMessage(currentMessage, { images })
   }, [
     message,
+    imageAttachments,
     disabled,
+    isImageUploading,
+    currentConversation,
+    clearImageAttachments,
     isResponseMode,
     respondToInteraction,
     sendMessage,
@@ -291,9 +333,12 @@ export const InputArea: FC<InputAreaProps> = memo(function InputArea({
         return
       }
 
-      // Open the files tab immediately so the user sees instant feedback
-      setDataSourcesPanelTab('files')
-      openRightPanel('data-sources')
+      // Open the files tab immediately so the user sees instant feedback.
+      // Images show as thumbnails in the composer instead.
+      if (files.some((f) => !isImageFile(f.name))) {
+        setDataSourcesPanelTab('files')
+        openRightPanel('data-sources')
+      }
 
       // uploadFiles validates internally and sets error if invalid
       await uploadFiles(files, sessionId)
@@ -367,6 +412,46 @@ export const InputArea: FC<InputAreaProps> = memo(function InputArea({
             </Flex>
           </div>
         )}
+        {/* Image attachments */}
+        {imageAttachments.length > 0 && (
+          <Flex wrap="wrap" gap="2" className="mb-2">
+            {imageAttachments.map((attachment) => (
+              <div
+                key={attachment.id}
+                className="border-base group relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border"
+                title={attachment.errorMessage ?? attachment.fileName}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- local blob: preview, next/image can't optimize it */}
+                <img
+                  src={attachment.previewUrl}
+                  alt={attachment.fileName}
+                  className={`h-full w-full object-cover ${attachment.status === 'uploaded' ? '' : 'opacity-60 blur-[1px]'}`}
+                />
+                {attachment.status === 'uploading' && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                    <Spinner size="small" aria-label={`Uploading ${attachment.fileName}`} />
+                  </div>
+                )}
+                {attachment.status === 'failed' && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                    <Warning className="text-error h-5 w-5" aria-label="Upload failed" />
+                  </div>
+                )}
+                {attachment.status !== 'uploading' && (
+                  <button
+                    type="button"
+                    onClick={() => removeImageAttachment(attachment.id)}
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100"
+                    aria-label={`Remove ${attachment.fileName}`}
+                  >
+                    <Close className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </Flex>
+        )}
+
         {/* Text Input */}
         <div onKeyDown={handleKeyDown}>
           <TextArea
@@ -522,11 +607,11 @@ export const InputArea: FC<InputAreaProps> = memo(function InputArea({
               <Button
                 kind="primary"
                 size="small"
-                color={!message.trim() || disabled ? undefined : 'brand'}
+                color={!message.trim() || disabled || isImageUploading ? undefined : 'brand'}
                 onClick={handleSubmit}
-                disabled={!message.trim() || disabled}
+                disabled={!message.trim() || disabled || isImageUploading}
                 aria-label={isResponseMode ? 'Send response' : 'Send message'}
-                title="Send query"
+                title={isImageUploading ? 'Waiting for images to upload' : 'Send query'}
               >
                 <Paperplane className="h-4 w-4" />
               </Button>

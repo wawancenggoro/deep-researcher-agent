@@ -70,6 +70,9 @@ logger = logging.getLogger(__name__)
 
 _CHROMA_EMBEDDING_MODEL_KEY = "deep_researcher_embedding_model"
 
+# Standalone image uploads are kept on disk but not ingested
+_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg"})
+
 # Default VLM model for image captioning
 # Default multimodal model used for local image and chart extraction.
 DEFAULT_VLM_MODEL = os.environ.get("DEEP_RESEARCHER_VLM_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
@@ -1353,6 +1356,15 @@ class LlamaIndexIngestor(TTLCleanupMixin, BaseIngestor):
                     file_name = original_filenames[i] if i < len(original_filenames) else Path(file_path).name
                     file_size = os.path.getsize(file_path)
                     is_pdf = file_name.lower().endswith(".pdf")
+
+                    if Path(file_name).suffix.lower() in _IMAGE_EXTENSIONS:
+                        logger.info(f"Skipping ingestion for image {i + 1}/{len(file_paths)} (kept at {file_path})")
+                        self._update_file_status(job, i, FileStatus.SUCCESS, chunks_created=0)
+                        # Not part of the collection, so drop it from file tracking too
+                        with self._lock:
+                            if i < len(job.file_details):
+                                self._files.pop(job.file_details[i].file_id, None)
+                        continue
 
                     mode_str = "text"
                     if is_pdf and (extract_tables or extract_images):

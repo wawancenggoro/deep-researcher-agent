@@ -184,8 +184,18 @@ export interface ChatMessage {
   enabledDataSources?: string[]
   /** Files that were available when this message was sent (for display in thinking panel) */
   messageFiles?: Array<{ id: string; fileName: string }>
+  /** Images attached to a user message, shown above the message bubble */
+  messageImages?: MessageImage[]
   /** Final-response model selected for this specific turn. */
   selectedModel?: string
+}
+
+/** Image attached to a user message */
+export interface MessageImage {
+  id: string
+  fileName: string
+  /** Small JPEG data URL (kept in localStorage with the conversation) */
+  url: string
 }
 
 /** Intermediate thinking step from agent */
@@ -469,6 +479,7 @@ export interface ChatActions {
     metadata?: {
       enabledDataSources?: string[]
       messageFiles?: Array<{ id: string; fileName: string }>
+      messageImages?: MessageImage[]
       selectedModel?: string
     }
   ) => ChatMessage
