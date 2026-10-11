@@ -118,6 +118,7 @@ deep_researcher_deep_researcher = "deep_researcher_agent.agents.deep_researcher.
 deep_researcher_fastapi_extensions = "deep_researcher_agent.fastapi_extensions.register"
 deep_researcher_clarifier = "deep_researcher_agent.agents.clarifier.register"
 deep_researcher_data_science = "deep_researcher_agent.agents.data_science.register"
+deep_researcher_nvidia_joke = "deep_researcher_agent.agents.nvidia_joke.register"
 deep_researcher_data_source_registry = "deep_researcher_agent.common.data_source_registry"
 deep_researcher_guardrails = "deep_researcher_agent.guardrails.register"
 

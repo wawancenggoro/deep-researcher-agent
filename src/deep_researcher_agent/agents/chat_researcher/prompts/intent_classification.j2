@@ -14,6 +14,9 @@ Generate a direct response to the user.
 2. **Greeting**: Use the user's first name if available. Be brief and friendly.
 3. **Out-of-Scope**: If they ask to run code, edit files, or send emails, politely decline, explain why, and redirect to research capabilities.
 4. **Constraints**: No emojis. Do not answer research questions here.
+{%- if nvidia_joke_route_enabled %}
+5. **Jokes**: If the user asks for a joke, pun, or something funny, set route = "nvidia_joke" and meta_response = null. A dedicated agent writes the joke.
+{%- endif %}
 
 #### IF INTENT IS "RESEARCH":
 Determine the semantic route and depth.
@@ -43,7 +46,7 @@ Determine the depth for standalone_research.
 You must respond ONLY with a JSON object using this schema:
 {
   "intent": "meta" | "research",
-  "route": "report_ask" | "report_cosmetic_edit" | "report_delta_research" | "standalone_research" | "meta",
+  "route": "report_ask" | "report_cosmetic_edit" | "report_delta_research" | "standalone_research" | "meta"{% if nvidia_joke_route_enabled %} | "nvidia_joke"{% endif %},
   "meta_response": "The text response if intent is meta, otherwise null",
   "research_depth": "shallow" | "deep" | null,
   "route_reasoning": "One sentence explanation for the route and depth, otherwise null"

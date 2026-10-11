@@ -71,6 +71,9 @@ class ChatResearcherState(BaseModel):
             across turns for report follow-up when no report job is available.
         workflow_outcome: Explicit terminal workflow failure when a node
             degrades an exception to fallback text; reset at each turn boundary.
+        nvidia_joke_route_enabled: Whether the intent classifier may route joke
+            requests to the NVIDIA joke agent. Set by the orchestrator when an
+            ``nvidia_joke_agent`` is configured; otherwise jokes stay meta.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
@@ -92,3 +95,4 @@ class ChatResearcherState(BaseModel):
     # across turns by the keep-if-set reducer so report follow-up works without an async job.
     last_report_markdown: Annotated[str | None, _keep_if_set] = None
     workflow_outcome: WorkflowOutcome | None = None
+    nvidia_joke_route_enabled: bool = False

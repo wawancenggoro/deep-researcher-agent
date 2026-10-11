@@ -70,6 +70,7 @@ Human-in-the-Loop <./customization/hitl.md>
 Plugin System <./extending/index.md>
 Adding a Tool <./extending/adding-a-tool.md>
 Adding a Data Source <./extending/adding-a-data-source.md>
+Adding a New Agent <./extending/adding-a-new-agent.md>
 ```
 
 ```{toctree}

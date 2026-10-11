@@ -345,6 +345,10 @@ class ChatDeepResearcherConfig(FunctionBaseConfig, name="chat_deepresearcher_age
         description="Submit deep research as an async job instead of running inline",
     )
     hybrid_research_agent: FunctionRef | None = Field(default=None, description="Optional hybrid research function")
+    nvidia_joke_agent: FunctionRef | None = Field(
+        default=None,
+        description="Optional NVIDIA joke agent; when set, the intent classifier routes joke requests to it",
+    )
     checkpoint_db: str = Field(
         default="./checkpoints.db",
         description="SQLite database path or Postgres DSN for persistent checkpoints.",
@@ -428,6 +432,7 @@ async def chat_deepresearcher_agent(config: ChatDeepResearcherConfig, builder: B
     hybrid_research_fn = (
         await builder.get_function(config.hybrid_research_agent) if config.hybrid_research_agent else None
     )
+    nvidia_joke_fn = await builder.get_function(config.nvidia_joke_agent) if config.nvidia_joke_agent else None
 
     # Get deep research tools for early validation
     deep_research_config = builder.get_function_config("deep_research_agent")
@@ -689,6 +694,7 @@ async def chat_deepresearcher_agent(config: ChatDeepResearcherConfig, builder: B
         report_seed_files_fn=_build_report_seed_files,
         hybrid_research_fn=hybrid_research_fn.ainvoke if hybrid_research_fn else None,
         hybrid_research_job_submitter=hybrid_research_job_submitter,
+        nvidia_joke_fn=nvidia_joke_fn.ainvoke if nvidia_joke_fn else None,
         checkpointer=checkpointer,
         validate_deep_research_tools_fn=validate_deep_research_tools,
     )

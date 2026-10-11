@@ -131,9 +131,17 @@ Template variables:
 | `current_datetime` | Current date and time string |
 | `user_info` | User info dict (name, email) or empty |
 | `tools` | List of `{name, description}` dicts for available tools |
+| `active_report_available` | Whether an active report exists for report follow-up routes |
+| `<NEW_AGENT>_route_enabled` | Whether the optional `<NEW_AGENT>` route is offered (refer to [Adding a New Agent](../../extending/adding-a-new-agent.md)) |
 
 The prompt instructs the LLM to respond with a JSON object containing
 `intent`, `meta_response` (when meta), and `research_depth` (when research).
+
+## Adding a Route for a New Agent
+
+To route a category of requests to an agent of your own, refer to
+[Adding a New Agent](../../extending/adding-a-new-agent.md). The NVIDIA joke route
+(`nvidia_joke`) is the reference implementation.
 
 ## Error Handling
 
@@ -156,6 +164,14 @@ Input:  "Hello! What can you do?"
 Output: user_intent = IntentResult(intent="meta")
         messages += [AIMessage("Hi! I'm a research assistant...")]
         -> routes to END
+```
+
+**Joke request (with `nvidia_joke_agent` configured):**
+
+```
+Input:  "Tell me a joke"
+Output: user_intent = IntentResult(intent="meta", target="nvidia_joke")
+        -> routes to nvidia_joke
 ```
 
 **Research query (shallow):**
