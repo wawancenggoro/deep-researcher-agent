@@ -441,6 +441,97 @@ class TestChatResearcherAgent:
         assert result is not None
 
     @pytest.mark.asyncio
+    async def test_nvidia_joke_target_routes_to_joke_agent(self, mock_clarifier):
+        seen = {}
+
+        async def joke_orchestration(state):
+            seen["route_enabled"] = state.nvidia_joke_route_enabled
+            return {"user_intent": IntentResult(intent="meta", target="nvidia_joke")}
+
+        async def joke_agent(state):
+            seen["joke_query"] = state.messages[-1].content
+            result = MagicMock()
+            result.messages = list(state.messages) + [AIMessage(content="My jokes run on CUDA cores.")]
+            return result
+
+        async def fail_if_called(_state):
+            raise AssertionError("research should not run")
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=joke_orchestration,
+            shallow_research_fn=fail_if_called,
+            deep_research_fn=fail_if_called,
+            clarifier_fn=mock_clarifier,
+            nvidia_joke_fn=joke_agent,
+        )
+
+        result = await agent.run(
+            ChatResearcherState(messages=[HumanMessage(content="Tell me a joke")]),
+            thread_id="test-nvidia-joke",
+        )
+
+        assert seen == {"route_enabled": True, "joke_query": "Tell me a joke"}
+        assert result["messages"][-1].content == "My jokes run on CUDA cores."
+        assert result.get("workflow_outcome") is None
+
+    @pytest.mark.asyncio
+    async def test_nvidia_joke_route_disabled_without_joke_agent(
+        self, mock_shallow_research, mock_deep_research, mock_clarifier
+    ):
+        seen = {}
+
+        async def orchestration(state):
+            seen["route_enabled"] = state.nvidia_joke_route_enabled
+            return {
+                "user_intent": IntentResult(intent="meta", target="meta"),
+                "messages": [AIMessage(content="Here is a joke.")],
+            }
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=orchestration,
+            shallow_research_fn=mock_shallow_research,
+            deep_research_fn=mock_deep_research,
+            clarifier_fn=mock_clarifier,
+        )
+
+        result = await agent.run(
+            ChatResearcherState(messages=[HumanMessage(content="Tell me a joke")]),
+            thread_id="test-nvidia-joke-disabled",
+        )
+
+        assert seen == {"route_enabled": False}
+        assert result["messages"][-1].content == "Here is a joke."
+
+    @pytest.mark.asyncio
+    async def test_nvidia_joke_failure_is_bounded(
+        self, mock_shallow_research, mock_deep_research, mock_clarifier, caplog
+    ):
+        async def joke_orchestration(_state):
+            return {"user_intent": IntentResult(intent="meta", target="nvidia_joke")}
+
+        async def failing_joke_agent(_state):
+            raise RuntimeError("private provider detail")
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=joke_orchestration,
+            shallow_research_fn=mock_shallow_research,
+            deep_research_fn=mock_deep_research,
+            clarifier_fn=mock_clarifier,
+            nvidia_joke_fn=failing_joke_agent,
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = await agent.run(
+                ChatResearcherState(messages=[HumanMessage(content="Tell me a joke")]),
+                thread_id="test-nvidia-joke-failure",
+            )
+
+        assert result["workflow_outcome"] == WorkflowFailure(error=RESEARCH_WORKFLOW_FAILURE_ERROR)
+        assert "try again" in result["messages"][-1].content.lower()
+        assert "private provider detail" not in result["messages"][-1].content
+        assert "NVIDIA joke agent failed (error_type=RuntimeError)" in caplog.text
+
+    @pytest.mark.asyncio
     async def test_hybrid_target_routes_to_placeholder(
         self,
         mock_shallow_research,

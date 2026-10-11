@@ -55,6 +55,7 @@ _ROUTE_REPORT_COSMETIC_EDIT = "report_cosmetic_edit"
 _ROUTE_REPORT_DELTA_RESEARCH = "report_delta_research"
 _ROUTE_STANDALONE_RESEARCH = "standalone_research"
 _ROUTE_META = "meta"
+_ROUTE_NVIDIA_JOKE = "nvidia_joke"
 
 
 def _failure_update(message: str) -> dict[str, Any]:
@@ -145,6 +146,7 @@ class IntentClassifier:
             user_info=user_info,
             tools=self.tools_info,
             active_report_available=bool(state.active_report_job_id or state.last_report_markdown),
+            nvidia_joke_route_enabled=state.nvidia_joke_route_enabled,
         )
         # Keep the router isolated from prior assistant report bodies. The prompt already contains
         # the latest query and report availability, which is the bounded context needed here.
@@ -172,6 +174,14 @@ class IntentClassifier:
 
             raw_intent = (parsed.get("intent") or "research").strip().lower()
             route = _normalize_route(parsed.get("route"))
+            if route == _ROUTE_NVIDIA_JOKE:
+                if state.nvidia_joke_route_enabled:
+                    # The joke agent writes the reply, so no meta message is added here.
+                    return {
+                        "user_intent": IntentResult(intent="meta", target="nvidia_joke", raw=parsed),
+                    }
+                # The route was not offered in the prompt; fall back to a plain meta reply.
+                route = _ROUTE_META
             if route == _ROUTE_META:
                 intent = "meta"
             elif route is not None:
@@ -296,6 +306,7 @@ def _normalize_route(raw_route: Any) -> str | None:
         _ROUTE_REPORT_DELTA_RESEARCH,
         _ROUTE_STANDALONE_RESEARCH,
         _ROUTE_META,
+        _ROUTE_NVIDIA_JOKE,
     ):
         return route
     return None

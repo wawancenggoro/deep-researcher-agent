@@ -561,3 +561,56 @@ class TestIntentClassifier:
         mock_llm.ainvoke.assert_called_once()
         assert result["user_intent"].intent == "research"
         assert result["depth_decision"].decision == "shallow"
+
+    @pytest.mark.asyncio
+    async def test_prompt_offers_nvidia_joke_route_only_when_enabled(self, mock_llm):
+        """The nvidia_joke route appears in the prompt only when the orchestrator enables it."""
+        mock_response = MagicMock()
+        mock_response.content = '{"intent":"meta","route":"meta","meta_response":"Hi!"}'
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+        classifier = IntentClassifier(llm=mock_llm)
+
+        await classifier.run(ChatResearcherState(messages=[HumanMessage(content="Tell me a joke")]))
+        disabled_prompt = mock_llm.ainvoke.call_args.args[0][0].content
+
+        await classifier.run(
+            ChatResearcherState(messages=[HumanMessage(content="Tell me a joke")], nvidia_joke_route_enabled=True)
+        )
+        enabled_prompt = mock_llm.ainvoke.call_args.args[0][0].content
+
+        assert "nvidia_joke" not in disabled_prompt
+        assert '"standalone_research" | "meta" | "nvidia_joke"' in enabled_prompt
+        assert 'set route = "nvidia_joke"' in enabled_prompt
+
+    @pytest.mark.asyncio
+    async def test_run_maps_nvidia_joke_route_when_enabled(self, mock_llm):
+        """route=nvidia_joke targets the joke agent and leaves the reply to it."""
+        mock_response = MagicMock()
+        mock_response.content = '{"intent":"meta","route":"nvidia_joke","meta_response":null}'
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        classifier = IntentClassifier(llm=mock_llm)
+        state = ChatResearcherState(messages=[HumanMessage(content="Tell me a joke")], nvidia_joke_route_enabled=True)
+
+        result = await classifier.run(state)
+
+        assert result["user_intent"].intent == "meta"
+        assert result["user_intent"].target == "nvidia_joke"
+        assert "messages" not in result
+        assert "depth_decision" not in result
+
+    @pytest.mark.asyncio
+    async def test_run_falls_back_to_meta_when_nvidia_joke_route_disabled(self, mock_llm):
+        """An unoffered nvidia_joke route degrades to a plain meta reply."""
+        mock_response = MagicMock()
+        mock_response.content = '{"intent":"meta","route":"nvidia_joke","meta_response":"Why did the GPU..."}'
+        mock_llm.ainvoke = AsyncMock(return_value=mock_response)
+
+        classifier = IntentClassifier(llm=mock_llm)
+        state = ChatResearcherState(messages=[HumanMessage(content="Tell me a joke")])
+
+        result = await classifier.run(state)
+
+        assert result["user_intent"].intent == "meta"
+        assert result["user_intent"].target == "meta"
+        assert result["messages"][0].content == "Why did the GPU..."

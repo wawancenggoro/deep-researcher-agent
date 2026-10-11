@@ -93,6 +93,18 @@ llms:
     chat_template_kwargs:
       enable_thinking: false
 
+  nemotron_lightning_joke_llm:
+    _type: nim
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    base_url: "https://integrate.api.nvidia.com/v1"
+    api_key: ${NVIDIA_API_KEY}
+    temperature: 0.9
+    top_p: 0.9
+    max_tokens: 512
+    num_retries: 5
+    chat_template_kwargs:
+      enable_thinking: false
+
   # LLM for document summaries (required when generate_summary: true)
   summary_llm:
     _type: nim
@@ -221,11 +233,18 @@ functions:
     exclude_tools:                     # Remove basic variant; deep uses advanced_web_search_tool
       - web_search_tool
 
+  # Answers "tell me a joke" requests with an NVIDIA-themed joke.
+  # Remove this entry and workflow.nvidia_joke_agent to answer jokes as plain meta replies.
+  nvidia_joke_agent:
+    _type: nvidia_joke_agent
+    llm: nemotron_lightning_joke_llm
+
 workflow:
   _type: chat_deepresearcher_agent
   enable_escalation: true
   enable_clarifier: true
   use_async_deep_research: true
+  nvidia_joke_agent: nvidia_joke_agent
   checkpoint_db: ${DEEP_RESEARCHER_CHECKPOINT_DB:-./checkpoints.db}
   relay:
     observability:

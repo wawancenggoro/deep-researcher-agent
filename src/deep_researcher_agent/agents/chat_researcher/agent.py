@@ -43,6 +43,7 @@ from langgraph.types import Command
 from deep_researcher_agent.agents.clarifier.models import ClarifierAgentState
 from deep_researcher_agent.agents.clarifier.models import ClarifierResult
 from deep_researcher_agent.agents.deep_researcher.models import DeepResearchAgentState
+from deep_researcher_agent.agents.nvidia_joke.models import NvidiaJokeAgentState
 from deep_researcher_agent.agents.shallow_researcher.models import ShallowResearchAgentState
 from deep_researcher_agent.common import get_latest_user_query
 from deep_researcher_agent.common.citation_verification import EmptySourceRegistryError
@@ -134,6 +135,7 @@ class ChatResearcherAgent:
         report_edit_fn: Callable[[ChatResearcherState], Awaitable[str]] | None = None,
         report_seed_files_fn: Callable[[ChatResearcherState], Awaitable[dict[str, Any] | None]] | None = None,
         hybrid_research_fn: Callable[[ChatResearcherState], Awaitable[dict[str, Any]]] | None = None,
+        nvidia_joke_fn: Callable[[NvidiaJokeAgentState], Awaitable[NvidiaJokeAgentState]] | None = None,
         checkpointer: BaseCheckpointSaver | None = None,
         validate_deep_research_tools_fn: Callable[[list[str] | None], tuple[bool, str]] | None = None,
     ) -> None:
@@ -154,6 +156,8 @@ class ChatResearcherAgent:
             hybrid_research_job_submitter: Optional function to submit hybrid (data science)
                 research as an async job. When omitted, hybrid runs inline in-request.
             report_edit_job_submitter: Optional function to submit report edit child jobs
+            nvidia_joke_fn: Optional NVIDIA joke agent. When set, the intent classifier may
+                route joke requests to it instead of answering them as meta.
             checkpointer: Optional checkpointer for persistent state (defaults to MemorySaver)
         """
         self.intent_classifier_fn = intent_classifier_fn
@@ -171,6 +175,7 @@ class ChatResearcherAgent:
         self.report_edit_fn = report_edit_fn
         self.report_seed_files_fn = report_seed_files_fn
         self.hybrid_research_fn = hybrid_research_fn
+        self.nvidia_joke_fn = nvidia_joke_fn
         self.checkpointer = checkpointer
         self.validate_deep_research_tools_fn = validate_deep_research_tools_fn
 
@@ -183,7 +188,9 @@ class ChatResearcherAgent:
             try:
                 return await run_agent(
                     "intent_classifier",
-                    lambda: self.intent_classifier_fn(state),
+                    lambda: self.intent_classifier_fn(
+                        state.model_copy(update={"nvidia_joke_route_enabled": self.nvidia_joke_fn is not None})
+                    ),
                     input_value={
                         "message_count": len(state.messages),
                         "data_source_count": len(state.data_sources or []),
@@ -246,6 +253,20 @@ class ChatResearcherAgent:
                     "messages": [
                         AIMessage(content="I ran into an error while researching your question. Please try again.")
                     ],
+                    "workflow_outcome": _research_workflow_failure(),
+                }
+
+        async def nvidia_joke_node(state: ChatResearcherState) -> dict[str, Any]:
+            try:
+                if self.nvidia_joke_fn is None:
+                    raise RuntimeError("NVIDIA joke agent is not configured")
+                trimmed_messages: list[BaseMessage] = trim_message_history(state.messages, self.max_history)
+                result = await self.nvidia_joke_fn(NvidiaJokeAgentState(messages=trimmed_messages))
+                return {"messages": [AIMessage(content=result.messages[-1].content)]}
+            except Exception as error:
+                logger.error("NVIDIA joke agent failed (error_type=%s)", type(error).__name__)
+                return {
+                    "messages": [AIMessage(content="I couldn't come up with a joke right now. Please try again.")],
                     "workflow_outcome": _research_workflow_failure(),
                 }
 
@@ -563,6 +584,8 @@ class ChatResearcherAgent:
 
         def route_after_orchestration(state: ChatResearcherState) -> str:
             """From combined orchestration: meta -> END (response already in messages), else by depth."""
+            if state.user_intent and state.user_intent.target == "nvidia_joke":
+                return "nvidia_joke"
             if state.user_intent and state.user_intent.intent == "meta":
                 return "END"
             # A report is available either as an async job (UI/server) or produced inline in this
@@ -622,6 +645,7 @@ class ChatResearcherAgent:
         graph.add_node("report_ask", report_ask_node)
         graph.add_node("report_edit", report_edit_node)
         graph.add_node("hybrid_research", hybrid_research_node)
+        graph.add_node("nvidia_joke", nvidia_joke_node)
 
         graph.set_entry_point("intent_classifier")
 
@@ -635,6 +659,7 @@ class ChatResearcherAgent:
                 "report_ask": "report_ask",
                 "report_edit": "report_edit",
                 "hybrid_research": "hybrid_research",
+                "nvidia_joke": "nvidia_joke",
             },
         )
 
@@ -651,6 +676,7 @@ class ChatResearcherAgent:
         graph.add_edge("report_ask", END)
         graph.add_edge("report_edit", END)
         graph.add_edge("hybrid_research", END)
+        graph.add_edge("nvidia_joke", END)
 
         return graph.compile(checkpointer=self.checkpointer)
 
