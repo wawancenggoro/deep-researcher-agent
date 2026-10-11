@@ -17,6 +17,9 @@ const EXTENSION_TO_MIME: Record<string, string[]> = {
   '.txt': ['text/plain'],
   '.csv': ['text/csv'],
   '.json': ['application/json'],
+  '.png': ['image/png'],
+  '.jpg': ['image/jpeg'],
+  '.jpeg': ['image/jpeg'],
 }
 
 const parsePositiveNumber = (value: string | undefined): number | null => {
