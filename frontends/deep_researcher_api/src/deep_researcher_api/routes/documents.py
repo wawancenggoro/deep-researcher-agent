@@ -95,7 +95,7 @@ def add_document_routes(router: APIRouter):
                         batch.temp_paths,
                         collection_name,
                         config={
-                            "cleanup_files": True,
+                            "cleanup_files": False,
                             "original_filenames": batch.original_filenames,
                         },
                     ),

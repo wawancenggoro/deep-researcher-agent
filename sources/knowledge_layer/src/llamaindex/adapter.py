@@ -1580,6 +1580,7 @@ class LlamaIndexIngestor(TTLCleanupMixin, BaseIngestor):
 
         finally:
             # Clean up temp files if requested
+            logger.info("cleanup_files: " + str(config.get("cleanup_files")))
             if config.get("cleanup_files", False):
                 for file_path in file_paths:
                     try:
