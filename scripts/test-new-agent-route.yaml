@@ -1,0 +1,3 @@
+uv run pytest tests/deep_researcher_agent/agents/chat_researcher tests/deep_researcher_agent/agents/nvidia_poem -q
+uv run ruff check src/deep_researcher_agent/agents tests/deep_researcher_agent/agents
+uv run ruff format --check src/deep_researcher_agent/agents tests/deep_researcher_agent/agents

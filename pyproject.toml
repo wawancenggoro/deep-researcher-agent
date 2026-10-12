@@ -25,6 +25,8 @@ package-dir = {"" = "src"}
 "deep_researcher_agent.agents.clarifier" = ["prompts/*.j2"]
 "deep_researcher_agent.agents.data_science" = ["prompts/*.j2"]
 "deep_researcher_agent.agents.deep_researcher" = ["prompts/*.j2", "skills/**/*"]
+"deep_researcher_agent.agents.nvidia_joke" = ["prompts/*.j2"]
+"deep_researcher_agent.agents.nvidia_poem" = ["prompts/*.j2"]
 "deep_researcher_agent.agents.report_rewriter" = ["prompts/*.j2"]
 "deep_researcher_agent.agents.shallow_researcher" = ["prompts/*.j2"]
 
@@ -119,6 +121,7 @@ deep_researcher_fastapi_extensions = "deep_researcher_agent.fastapi_extensions.r
 deep_researcher_clarifier = "deep_researcher_agent.agents.clarifier.register"
 deep_researcher_data_science = "deep_researcher_agent.agents.data_science.register"
 deep_researcher_nvidia_joke = "deep_researcher_agent.agents.nvidia_joke.register"
+deep_researcher_nvidia_poem = "deep_researcher_agent.agents.nvidia_poem.register"
 deep_researcher_data_source_registry = "deep_researcher_agent.common.data_source_registry"
 deep_researcher_guardrails = "deep_researcher_agent.guardrails.register"
 

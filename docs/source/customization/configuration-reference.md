@@ -735,7 +735,8 @@ catalog when the provider offer or deployment changes.
 | `enable_clarifier` | `bool` | `true` | Run the clarifier agent before deep research to gather user requirements. |
 | `use_async_deep_research` | `bool` | `false` | Submit deep research as an async background job (requires [Dask](https://www.dask.org/) scheduler). |
 | `hybrid_research_agent` | `str` or `None` | `None` | Optional function reference invoked when catalog-aware routing selects Hybrid research. |
-| `<NEW_AGENT>_agent` | `str` or `None` | `None` | Optional function reference to an `<NEW_AGENT>_agent`. When set, the intent classifier routes <NEW_AGENT> requests to it. Refer to [Adding a New Agent](../extending/adding-a-new-agent.md). |
+| `nvidia_joke_agent` | `str` or `None` | `None` | Optional function reference to an `nvidia_joke_agent`. When set, the intent classifier routes joke requests to it. Refer to [Adding a New Agent](../extending/adding-a-new-agent.md). |
+| `nvidia_poem_agent` | `str` or `None` | `None` | Optional function reference to an `nvidia_poem_agent`. When set, the intent classifier routes poem requests to it. Refer to [Adding a New Agent](../extending/adding-a-new-agent.md). |
 | `max_history` | `int` | `20` | Maximum number of messages to keep in conversation history before trimming. |
 | `checkpoint_db` | `str` | `./checkpoints.db` | SQLite path or PostgreSQL DSN for persistent conversation checkpoints. |
 | `relay` | `object` | enabled defaults | NeMo Relay logging, Observability v3 ATOF/OTEL destinations, PII redaction, and pricing sources. Relay instrumentation itself has no workflow disable switch. See [Observability with NeMo Relay](../deployment/observability.md). |

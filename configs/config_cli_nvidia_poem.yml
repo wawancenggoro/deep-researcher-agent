@@ -1,0 +1,33 @@
+# Minimal configuration for the NVIDIA poem agent.
+# Ask it for a poem and it replies with an NVIDIA-themed one; anything else is politely declined.
+#
+# Usage:
+#   nat run --config_file configs/config_cli_nvidia_poem.yml --input "Make me a poem"
+
+general:
+  telemetry:
+    logging:
+      console:
+        _type: console
+        level: INFO
+
+llms:
+  nemotron_lightning_poem_llm:
+    _type: nim
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    base_url: "https://integrate.api.nvidia.com/v1"
+    api_key: ${NVIDIA_API_KEY}
+    temperature: 0.9
+    top_p: 0.9
+    max_tokens: 512
+    num_retries: 5
+    chat_template_kwargs:
+      enable_thinking: false
+
+functions:
+  nvidia_poem_agent:
+    _type: nvidia_poem_agent
+    llm: nemotron_lightning_poem_llm
+
+workflow:
+  _type: nvidia_poem_workflow

@@ -52,6 +52,18 @@ llms:
     chat_template_kwargs:
       enable_thinking: false
 
+  nemotron_lightning_poem_llm:
+    _type: nim
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    base_url: "https://integrate.api.nvidia.com/v1"
+    api_key: ${NVIDIA_API_KEY}
+    temperature: 0.9
+    top_p: 0.9
+    max_tokens: 512
+    num_retries: 5
+    chat_template_kwargs:
+      enable_thinking: false
+
   nemotron_ultra_llm:
     _type: nim
     model_name: nvidia/nemotron-3-ultra-550b-a55b
@@ -169,11 +181,18 @@ functions:
     _type: nvidia_joke_agent
     llm: nemotron_lightning_joke_llm
 
+  # Answers "make me a poem" requests with an NVIDIA-themed poem.
+  # Remove this entry and workflow.nvidia_poem_agent to answer poems as plain meta replies.
+  nvidia_poem_agent:
+    _type: nvidia_poem_agent
+    llm: nemotron_lightning_poem_llm
+
 workflow:
   _type: chat_deepresearcher_agent
   enable_escalation: true
   enable_clarifier: true
   nvidia_joke_agent: nvidia_joke_agent
+  nvidia_poem_agent: nvidia_poem_agent
   checkpoint_db: ${DEEP_RESEARCHER_CHECKPOINT_DB:-./checkpoints.db}
   # Uncomment to export Relay traces to a local Phoenix instance.
   # relay:
