@@ -33,6 +33,7 @@ from deep_researcher_agent.common.citation_verification import EmptySourceRegist
 from deep_researcher_agent.common.citation_verification import EmptySourceRegistryReason
 from deep_researcher_agent.common.logging_utils import log_content_metadata
 from deep_researcher_agent.common.logging_utils import log_identifier_ref
+from deep_researcher_agent.knowledge.image_attachments import ImageAttachment
 
 
 class TestChatResearcherAgent:
@@ -621,6 +622,170 @@ class TestChatResearcherAgent:
         assert "try again" in result["messages"][-1].content.lower()
         assert "private provider detail" not in result["messages"][-1].content
         assert "NVIDIA poem agent failed (error_type=RuntimeError)" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_attached_image_routes_to_vision_agent_without_classifier(self, mock_clarifier, tmp_path):
+        image = tmp_path / "upload.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+        seen = {}
+
+        async def fail_if_called(_state):
+            raise AssertionError("classifier and research should not run")
+
+        async def vision_agent(state):
+            seen["question"] = state.messages[-1].content
+            seen["images"] = [(i.file_name, i.mime_type, i.data_base64) for i in state.images]
+            result = MagicMock()
+            result.messages = list(state.messages) + [AIMessage(content="A tabby cat.")]
+            return result
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=fail_if_called,
+            shallow_research_fn=fail_if_called,
+            deep_research_fn=fail_if_called,
+            clarifier_fn=mock_clarifier,
+            vision_fn=vision_agent,
+        )
+
+        result = await agent.run(
+            ChatResearcherState(
+                messages=[HumanMessage(content="What is this?")],
+                attached_images=[ImageAttachment(file_path=str(image), file_name="cat.png", mime_type="image/png")],
+            ),
+            thread_id="test-vision",
+        )
+
+        assert seen == {"question": "What is this?", "images": [("cat.png", "image/png", "iVBORw0KGgo=")]}
+        assert result["messages"][-1].content == "A tabby cat."
+        assert result["user_intent"].target == "vision"
+        assert result.get("workflow_outcome") is None
+
+    @pytest.mark.asyncio
+    async def test_attached_images_do_not_carry_over_to_next_turn(self, mock_clarifier, tmp_path):
+        image = tmp_path / "upload.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+        classified = []
+
+        async def classifier(state):
+            classified.append(state.attached_images)
+            return {
+                "user_intent": IntentResult(intent="meta", target="meta"),
+                "messages": [AIMessage(content="Hello!")],
+            }
+
+        async def vision_agent(state):
+            result = MagicMock()
+            result.messages = list(state.messages) + [AIMessage(content="A tabby cat.")]
+            return result
+
+        async def fail_if_called(_state):
+            raise AssertionError("research should not run")
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=classifier,
+            shallow_research_fn=fail_if_called,
+            deep_research_fn=fail_if_called,
+            clarifier_fn=mock_clarifier,
+            vision_fn=vision_agent,
+        )
+        attachment = ImageAttachment(file_path=str(image), file_name="cat.png", mime_type="image/png")
+
+        await agent.run(
+            ChatResearcherState(messages=[HumanMessage(content="What is this?")], attached_images=[attachment]),
+            thread_id="test-vision-carry-over",
+        )
+        result = await agent.run(
+            ChatResearcherState(messages=[HumanMessage(content="Hi")]),
+            thread_id="test-vision-carry-over",
+        )
+
+        assert classified == [None]
+        assert result["messages"][-1].content == "Hello!"
+
+    @pytest.mark.asyncio
+    async def test_attached_image_without_vision_agent_uses_classifier(
+        self, mock_intent_classifier, mock_shallow_research, mock_deep_research, mock_clarifier
+    ):
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=mock_intent_classifier,
+            shallow_research_fn=mock_shallow_research,
+            deep_research_fn=mock_deep_research,
+            clarifier_fn=mock_clarifier,
+        )
+
+        result = await agent.run(
+            ChatResearcherState(
+                messages=[HumanMessage(content="What is CUDA?")],
+                attached_images=[ImageAttachment(file_path="/missing.png", file_name="a.png", mime_type="image/png")],
+            ),
+            thread_id="test-vision-unconfigured",
+        )
+
+        assert result["user_intent"].target == "new_research"
+
+    @pytest.mark.asyncio
+    async def test_unreadable_image_is_bounded(self, mock_shallow_research, mock_deep_research, mock_clarifier, caplog):
+        async def fail_if_called(_state):
+            raise AssertionError("vision agent should not run without image bytes")
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=fail_if_called,
+            shallow_research_fn=mock_shallow_research,
+            deep_research_fn=mock_deep_research,
+            clarifier_fn=mock_clarifier,
+            vision_fn=fail_if_called,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = await agent.run(
+                ChatResearcherState(
+                    messages=[HumanMessage(content="What is this?")],
+                    attached_images=[
+                        ImageAttachment(file_path="/missing/upload.png", file_name="cat.png", mime_type="image/png")
+                    ],
+                ),
+                thread_id="test-vision-missing-file",
+            )
+
+        assert result["workflow_outcome"] == WorkflowFailure(error=RESEARCH_WORKFLOW_FAILURE_ERROR)
+        assert result["messages"][-1].content == "I couldn't read the uploaded image. Please upload it again."
+        assert "/missing/upload.png" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_vision_agent_failure_is_bounded(
+        self, mock_shallow_research, mock_deep_research, mock_clarifier, caplog, tmp_path
+    ):
+        image = tmp_path / "upload.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        async def fail_if_called(_state):
+            raise AssertionError("classifier should not run")
+
+        async def failing_vision_agent(_state):
+            raise RuntimeError("private provider detail")
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=fail_if_called,
+            shallow_research_fn=mock_shallow_research,
+            deep_research_fn=mock_deep_research,
+            clarifier_fn=mock_clarifier,
+            vision_fn=failing_vision_agent,
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = await agent.run(
+                ChatResearcherState(
+                    messages=[HumanMessage(content="What is this?")],
+                    attached_images=[ImageAttachment(file_path=str(image), file_name="cat.png", mime_type="image/png")],
+                ),
+                thread_id="test-vision-failure",
+            )
+
+        assert result["workflow_outcome"] == WorkflowFailure(error=RESEARCH_WORKFLOW_FAILURE_ERROR)
+        assert "try again" in result["messages"][-1].content.lower()
+        assert "private provider detail" not in result["messages"][-1].content
+        assert "Vision agent failed (error_type=RuntimeError)" in caplog.text
+        assert "private provider detail" not in caplog.text
 
     @pytest.mark.asyncio
     async def test_hybrid_target_routes_to_placeholder(

@@ -117,6 +117,17 @@ llms:
     chat_template_kwargs:
       enable_thinking: false
 
+  # Vision-language model for the vision agent; must accept image inputs.
+  # max_tokens covers reasoning tokens as well as the answer.
+  nemotron_omni_vision_llm:
+    _type: nim
+    model_name: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+    base_url: "https://integrate.api.nvidia.com/v1"
+    api_key: ${NVIDIA_API_KEY}
+    temperature: 0.2
+    max_tokens: 4096
+    num_retries: 5
+
   # LLM for document summaries (required when generate_summary: true)
   summary_llm:
     _type: nim
@@ -257,6 +268,12 @@ functions:
     _type: nvidia_poem_agent
     llm: nemotron_lightning_poem_llm
 
+  # Answers chat turns that have an uploaded image, using a vision-language model.
+  # Remove this entry and workflow.vision_agent to leave uploaded images unanswered.
+  vision_agent:
+    _type: vision_agent
+    llm: nemotron_omni_vision_llm
+
 workflow:
   _type: chat_deepresearcher_agent
   enable_escalation: true
@@ -264,6 +281,7 @@ workflow:
   use_async_deep_research: true
   nvidia_joke_agent: nvidia_joke_agent
   nvidia_poem_agent: nvidia_poem_agent
+  vision_agent: vision_agent
   checkpoint_db: ${DEEP_RESEARCHER_CHECKPOINT_DB:-./checkpoints.db}
   relay:
     observability:

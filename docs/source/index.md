@@ -71,6 +71,7 @@ Plugin System <./extending/index.md>
 Adding a Tool <./extending/adding-a-tool.md>
 Adding a Data Source <./extending/adding-a-data-source.md>
 Adding a New Agent <./extending/adding-a-new-agent.md>
+Adding a Vision Agent <./extending/adding-a-vision-agent.md>
 ```
 
 ```{toctree}

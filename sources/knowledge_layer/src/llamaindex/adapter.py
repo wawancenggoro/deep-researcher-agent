@@ -56,6 +56,7 @@ from deep_researcher_agent.knowledge.base import BaseRetriever
 from deep_researcher_agent.knowledge.base import TTLCleanupMixin
 from deep_researcher_agent.knowledge.factory import register_ingestor
 from deep_researcher_agent.knowledge.factory import register_retriever
+from deep_researcher_agent.knowledge.image_attachments import record_image_attachment
 from deep_researcher_agent.knowledge.schema import Chunk
 from deep_researcher_agent.knowledge.schema import CollectionInfo
 from deep_researcher_agent.knowledge.schema import ContentType
@@ -715,6 +716,10 @@ class LlamaIndexIngestor(TTLCleanupMixin, BaseIngestor):
                     progress_percent=0.0,
                 )
             )
+            # Kept images are answered by the vision agent on the next chat turn.
+            # Recorded here, before the upload request returns, so a quick send can't miss it.
+            if Path(file_name).suffix.lower() in _IMAGE_EXTENSIONS:
+                record_image_attachment(collection_name, p, file_name)
             # Store file_id → file_name mapping for delete operations
             with self._lock:
                 self._files[file_id] = FileInfo(
