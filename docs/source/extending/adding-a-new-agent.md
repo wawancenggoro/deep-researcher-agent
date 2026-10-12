@@ -19,7 +19,7 @@ consistently:
 
 | Placeholder | Meaning | Joke-agent equivalent |
 |---|---|---|
-| `my_agent` | Package directory, NAT type name, route name, and workflow setting | `nvidia_joke`, `nvidia_joke_agent`, `nvidia_joke` |
+| `my_agent` | Package directory, NAT type name, route name, and workflow setting | `nvidia_joke`, `nvidia_joke_agent` |
 | `MyAgent` | Agent class | `NvidiaJokeAgent` |
 | `MyAgentState` | State model | `NvidiaJokeAgentState` |
 | `MyAgentConfig` | NAT config class | `NvidiaJokeAgentConfig` |
