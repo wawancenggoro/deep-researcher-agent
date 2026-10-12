@@ -333,7 +333,7 @@ the entry-point path and that `uv sync` succeeded.
 
 ### Step 7: Create a Standalone Config
 
-Create a small config that runs only your agent. It needs an LLM, the agent
+Create a small config in `configs/` that runs only your agent with the file name `config_cli_my_agent.yml`. It needs an LLM, the agent
 function, and the workflow wrapper.
 
 ```yaml
