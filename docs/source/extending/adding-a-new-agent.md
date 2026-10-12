@@ -424,6 +424,7 @@ async def test_run_sends_system_prompt_first():
     sent = llm.ainvoke.call_args.args[0]
     assert isinstance(sent[0], SystemMessage)
     assert sent[-1].content == "question"
+
 ```
 
 Also add an empty `tests/deep_researcher_agent/agents/my_agent/__init__.py`
