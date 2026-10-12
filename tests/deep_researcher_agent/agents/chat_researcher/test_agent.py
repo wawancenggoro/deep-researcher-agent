@@ -532,6 +532,97 @@ class TestChatResearcherAgent:
         assert "NVIDIA joke agent failed (error_type=RuntimeError)" in caplog.text
 
     @pytest.mark.asyncio
+    async def test_nvidia_poem_target_routes_to_poem_agent(self, mock_clarifier):
+        seen = {}
+
+        async def poem_orchestration(state):
+            seen["route_enabled"] = state.nvidia_poem_route_enabled
+            return {"user_intent": IntentResult(intent="meta", target="nvidia_poem")}
+
+        async def poem_agent(state):
+            seen["poem_query"] = state.messages[-1].content
+            result = MagicMock()
+            result.messages = list(state.messages) + [AIMessage(content="My poems run on CUDA cores.")]
+            return result
+
+        async def fail_if_called(_state):
+            raise AssertionError("research should not run")
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=poem_orchestration,
+            shallow_research_fn=fail_if_called,
+            deep_research_fn=fail_if_called,
+            clarifier_fn=mock_clarifier,
+            nvidia_poem_fn=poem_agent,
+        )
+
+        result = await agent.run(
+            ChatResearcherState(messages=[HumanMessage(content="Make me a poem")]),
+            thread_id="test-nvidia-poem",
+        )
+
+        assert seen == {"route_enabled": True, "poem_query": "Make me a poem"}
+        assert result["messages"][-1].content == "My poems run on CUDA cores."
+        assert result.get("workflow_outcome") is None
+
+    @pytest.mark.asyncio
+    async def test_nvidia_poem_route_disabled_without_poem_agent(
+        self, mock_shallow_research, mock_deep_research, mock_clarifier
+    ):
+        seen = {}
+
+        async def orchestration(state):
+            seen["route_enabled"] = state.nvidia_poem_route_enabled
+            return {
+                "user_intent": IntentResult(intent="meta", target="meta"),
+                "messages": [AIMessage(content="Here is a poem.")],
+            }
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=orchestration,
+            shallow_research_fn=mock_shallow_research,
+            deep_research_fn=mock_deep_research,
+            clarifier_fn=mock_clarifier,
+        )
+
+        result = await agent.run(
+            ChatResearcherState(messages=[HumanMessage(content="Make me a poem")]),
+            thread_id="test-nvidia-poem-disabled",
+        )
+
+        assert seen == {"route_enabled": False}
+        assert result["messages"][-1].content == "Here is a poem."
+
+    @pytest.mark.asyncio
+    async def test_nvidia_poem_failure_is_bounded(
+        self, mock_shallow_research, mock_deep_research, mock_clarifier, caplog
+    ):
+        async def poem_orchestration(_state):
+            return {"user_intent": IntentResult(intent="meta", target="nvidia_poem")}
+
+        async def failing_poem_agent(_state):
+            raise RuntimeError("private provider detail")
+
+        agent = ChatResearcherAgent(
+            intent_classifier_fn=poem_orchestration,
+            shallow_research_fn=mock_shallow_research,
+            deep_research_fn=mock_deep_research,
+            clarifier_fn=mock_clarifier,
+            nvidia_poem_fn=failing_poem_agent,
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = await agent.run(
+                ChatResearcherState(messages=[HumanMessage(content="Make me a poem")]),
+                thread_id="test-nvidia-poem-failure",
+            )
+
+        assert result["workflow_outcome"] == WorkflowFailure(error=RESEARCH_WORKFLOW_FAILURE_ERROR)
+        assert "try again" in result["messages"][-1].content.lower()
+        assert "private provider detail" not in result["messages"][-1].content
+        assert "NVIDIA poem agent failed (error_type=RuntimeError)" in caplog.text
+
+    @pytest.mark.asyncio
     async def test_hybrid_target_routes_to_placeholder(
         self,
         mock_shallow_research,

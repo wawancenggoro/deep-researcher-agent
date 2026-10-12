@@ -17,6 +17,9 @@ Generate a direct response to the user.
 {%- if nvidia_joke_route_enabled %}
 5. **Jokes**: If the user asks for a joke, pun, or something funny, set route = "nvidia_joke" and meta_response = null. A dedicated agent writes the joke.
 {%- endif %}
+{%- if nvidia_poem_route_enabled %}
+6. **Poems**: If the user asks for a poem, set route = "nvidia_poem" and meta_response = null. A dedicated agent writes the poem.
+{%- endif %}
 
 #### IF INTENT IS "RESEARCH":
 Determine the semantic route and depth.
@@ -46,7 +49,7 @@ Determine the depth for standalone_research.
 You must respond ONLY with a JSON object using this schema:
 {
   "intent": "meta" | "research",
-  "route": "report_ask" | "report_cosmetic_edit" | "report_delta_research" | "standalone_research" | "meta"{% if nvidia_joke_route_enabled %} | "nvidia_joke"{% endif %},
+  "route": "report_ask" | "report_cosmetic_edit" | "report_delta_research" | "standalone_research" | "meta"{% if nvidia_joke_route_enabled %} | "nvidia_joke"{% endif %}{% if nvidia_poem_route_enabled %} | "nvidia_poem"{% endif %},
   "meta_response": "The text response if intent is meta, otherwise null",
   "research_depth": "shallow" | "deep" | null,
   "route_reasoning": "One sentence explanation for the route and depth, otherwise null"

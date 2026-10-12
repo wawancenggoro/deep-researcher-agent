@@ -96,3 +96,4 @@ class ChatResearcherState(BaseModel):
     last_report_markdown: Annotated[str | None, _keep_if_set] = None
     workflow_outcome: WorkflowOutcome | None = None
     nvidia_joke_route_enabled: bool = False
+    nvidia_poem_route_enabled: bool = False

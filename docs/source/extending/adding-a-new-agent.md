@@ -19,7 +19,7 @@ consistently:
 
 | Placeholder | Meaning | Joke-agent equivalent |
 |---|---|---|
-| `my_agent` | Package directory, NAT type name, route name, and workflow setting | `nvidia_joke`, `nvidia_joke_agent`, `nvidia_joke` |
+| `my_agent` | Package directory, NAT type name, route name, and workflow setting | `nvidia_joke`, `nvidia_joke_agent` |
 | `MyAgent` | Agent class | `NvidiaJokeAgent` |
 | `MyAgentState` | State model | `NvidiaJokeAgentState` |
 | `MyAgentConfig` | NAT config class | `NvidiaJokeAgentConfig` |
@@ -28,9 +28,9 @@ consistently:
 
 The guide has three parts:
 
-- **Part 1 (Steps 1–8):** Build the agent and run it standalone.
-- **Part 2 (Steps 9–15):** Add a route so the chat pipeline sends requests to it.
-- **Part 3 (Steps 16–17):** Test the route and run it end-to-end.
+- **Part 1 (Steps 1–9):** Build the agent and run it standalone.
+- **Part 2 (Steps 10–16):** Add a route so the chat pipeline sends requests to it.
+- **Part 3 (Steps 17–18):** Test the route and run it end-to-end.
 
 You can stop after Part 1 if you only need a standalone agent.
 
@@ -64,11 +64,11 @@ are separate packages under `sources/`.
 
 ```
 src/deep_researcher_agent/agents/my_agent/
-    __init__.py          # Imports register so NAT loads the plugin
+    __init__.py          # Required: imports register, re-exports the functions (Step 6)
     agent.py             # Agent logic
     register.py          # NAT config classes and @register_function
     models/
-        __init__.py
+        __init__.py      # Required: re-exports MyAgentState (Step 2)
         state.py         # Input/output state model
     prompts/
         system.j2        # System prompt (Jinja2)
@@ -116,6 +116,11 @@ class MyAgentState(BaseModel):
 
     messages: Annotated[list[AnyMessage], add_messages]
 ```
+
+`models/__init__.py` is required, not optional. `agent.py` and `register.py`
+import the state with `from .models import MyAgentState`, and the orchestrator
+imports it from `deep_researcher_agent.agents.my_agent.models` (Step 14a). Those
+imports only work if this file re-exports the class:
 
 ```python
 # src/deep_researcher_agent/agents/my_agent/models/__init__.py
@@ -283,7 +288,20 @@ async def my_agent_workflow(config: MyAgentWorkflowConfig, builder: Builder):
     yield FunctionInfo.from_fn(_run, description="My agent workflow (accepts string query).")
 ```
 
-Then make the package import `register` so NAT loads both functions:
+```{note}
+If the agent needs research tools, follow `agents/shallow_researcher/register.py`:
+add `tools` and `exclude_tools` fields, resolve them with `builder.get_tools(...)`,
+and filter them per request with `filter_tools_by_sources`.
+```
+
+---
+
+### Step 6: Create the Package `__init__.py`
+
+Every agent package needs an `__init__.py` at its top level, next to
+`register.py`. Copy this file and rename the two functions to match
+`register.py`. It is the same pattern as `agents/nvidia_joke/__init__.py` and
+every other agent package.
 
 ```python
 # src/deep_researcher_agent/agents/my_agent/__init__.py
@@ -300,24 +318,79 @@ __all__ = [
 ]
 ```
 
+Each line has a job:
+
+| Line | Purpose |
+|---|---|
+| `from . import register  # noqa: F401` | Runs the `@register_function` decorators in `register.py` whenever the package is imported, so `my_agent` and `my_agent_workflow` are registered with NeMo Agent Toolkit. The package is imported, for example, when the orchestrator imports `deep_researcher_agent.agents.my_agent.models` (Step 14a) or when tests import the agent. |
+| `from .register import my_agent ...` | Re-exports the functions so callers can write `from deep_researcher_agent.agents.my_agent import my_agent`. |
+| `__all__ = [...]` | Declares the package's public names. |
+
+`# noqa: F401` tells Ruff not to report F401 ("imported but unused"). The
+`register` import is never used by name; it exists only for its side effect.
+Without the comment, Ruff flags it, and `ruff check --fix` would delete it.
+
 ```{note}
-If the agent needs research tools, follow `agents/shallow_researcher/register.py`:
-add `tools` and `exclude_tools` fields, resolve them with `builder.get_tools(...)`,
-and filter them per request with `filter_tools_by_sources`.
+NeMo Agent Toolkit also loads `register.py` directly through the entry point
+added in Step 7, and setuptools packages the agent's Python files even without
+this file. Keep it anyway: it guarantees registration whenever the package is
+imported, and it keeps the package consistent with every other agent.
 ```
+
+Check that the package imports and exposes both functions:
+
+```bash
+uv run python -c "import deep_researcher_agent.agents.my_agent as m; print(m.__all__)"
+```
+
+Expected output: `['my_agent', 'my_agent_workflow']`.
 
 ---
 
-### Step 6: Add the Plugin Entry Point
+### Step 7: Add the Plugin Entry Point and Package Data
 
-NAT discovers plugins through entry points. Add one line to the root
-`pyproject.toml`, under the existing agent entries:
+Make two edits to the root `pyproject.toml`.
+
+**7a. Add the plugin entry point.** NAT discovers plugins through entry points.
+Add one line under the existing agent entries:
 
 ```toml
 [project.entry-points."nat.plugins"]
 # ...existing entries...
 deep_researcher_my_agent = "deep_researcher_agent.agents.my_agent.register"
 ```
+
+**7b. Add the prompts to the package data.** Add a line for your agent to
+`[tool.setuptools.package-data]`, keeping the entries in alphabetical order:
+
+```toml
+[tool.setuptools.package-data]
+# ...existing entries...
+"deep_researcher_agent.agents.my_agent" = ["prompts/*.j2"]
+```
+
+setuptools packages only `.py` files unless told otherwise. Without this line,
+the agent still works in a source checkout, in editable installs (the CLI and
+the main `deploy/Dockerfile` image), and in builds from a git checkout, where
+setuptools-scm adds git-tracked files. That makes the gap easy to miss. Builds
+that install the package as a wheel without the `.git` directory leave the
+prompts out. The MCP server image is one: `mcp/Dockerfile` runs
+`uv sync --no-editable`, and `.dockerignore` excludes `.git`. There the agent
+fails at startup with `PromptError: Prompt file not found`. List any other
+non-Python files the agent reads (for example `"data/*.json"`) the same way.
+
+To check, build a wheel from a copy of the source without `.git`, the same way
+the MCP image does, and list the agent's prompt files:
+
+```bash
+tmp=$(mktemp -d)
+rsync -a --exclude '__pycache__' --exclude '*.egg-info' pyproject.toml README.md src "$tmp/"
+(cd "$tmp" && uv build --wheel -o "$tmp/dist" -q)
+python3 -c "import sys, zipfile; print([n for n in zipfile.ZipFile(sys.argv[1]).namelist() if '/my_agent/prompts/' in n])" "$tmp"/dist/*.whl
+```
+
+The output should list `deep_researcher_agent/agents/my_agent/prompts/system.j2`.
+An empty list means the package-data line is missing or misspelled.
 
 Reinstall so the entry point is registered, then confirm NAT sees both types:
 
@@ -331,9 +404,9 @@ the entry-point path and that `uv sync` succeeded.
 
 ---
 
-### Step 7: Create a Standalone Config
+### Step 8: Create a Standalone Config
 
-Create a small config that runs only your agent. It needs an LLM, the agent
+Create a small config in `configs/` that runs only your agent with the file name `config_cli_my_agent.yml`. It needs an LLM, the agent
 function, and the workflow wrapper.
 
 ```yaml
@@ -375,7 +448,7 @@ higher (0.7–0.9) for creative output such as the joke agent.
 
 ---
 
-### Step 8: Test and Run the Agent Standalone
+### Step 9: Test and Run the Agent Standalone
 
 Write unit tests with a mocked LLM so they run without network access:
 
@@ -424,6 +497,7 @@ async def test_run_sends_system_prompt_first():
     sent = llm.ainvoke.call_args.args[0]
     assert isinstance(sent[0], SystemMessage)
     assert sent[-1].content == "question"
+
 ```
 
 Also add an empty `tests/deep_researcher_agent/agents/my_agent/__init__.py`
@@ -468,7 +542,7 @@ All files in this part are under
 
 ---
 
-### Step 9: Add the Route Target
+### Step 10: Add the Route Target
 
 Open `models/intent.py` and add your route to `RouteTarget`:
 
@@ -481,7 +555,7 @@ RouteTarget = Literal["meta", "report", "new_research", "hybrid_research", "nvid
 
 ---
 
-### Step 10: Add the Availability Flag to the State
+### Step 11: Add the Availability Flag to the State
 
 Open `models/state.py`. In `ChatResearcherState`, add a flag after the last
 field and document it in the class docstring's `Attributes:` list:
@@ -496,17 +570,17 @@ field and document it in the class docstring's `Attributes:` list:
             ``my_agent`` is configured.
 ```
 
-The orchestrator sets this flag (Step 13). The classifier reads it (Steps 11
+The orchestrator sets this flag (Step 14). The classifier reads it (Steps 12
 and 12). It defaults to `False`, so other callers of the classifier, such as the
 MCP server, never see the route.
 
 ---
 
-### Step 11: Teach the Classifier the Route
+### Step 12: Teach the Classifier the Route
 
 Open `nodes/intent_classifier.py` and make four edits.
 
-**11a. Add a route constant** next to the existing ones near the top of the file:
+**12a. Add a route constant** next to the existing ones near the top of the file:
 
 ```python
 _ROUTE_META = "meta"
@@ -514,7 +588,7 @@ _ROUTE_NVIDIA_JOKE = "nvidia_joke"
 _ROUTE_MY_AGENT = "my_agent"
 ```
 
-**11b. Accept the route** by adding it to the tuple in `_normalize_route`. Any
+**12b. Accept the route** by adding it to the tuple in `_normalize_route`. Any
 route not in this tuple is discarded:
 
 ```python
@@ -530,7 +604,7 @@ route not in this tuple is discarded:
         return route
 ```
 
-**11c. Pass the flag to the prompt.** In `IntentClassifier.run`, add it to the
+**12c. Pass the flag to the prompt.** In `IntentClassifier.run`, add it to the
 `render_prompt_template(...)` call:
 
 ```python
@@ -542,7 +616,7 @@ route not in this tuple is discarded:
         )
 ```
 
-**11d. Map the route to your target.** In `IntentClassifier.run`, find
+**12d. Map the route to your target.** In `IntentClassifier.run`, find
 `route = _normalize_route(parsed.get("route"))` and the `if route == _ROUTE_NVIDIA_JOKE:`
 block right after it. Add your block after that one and before
 `if route == _ROUTE_META:`:
@@ -569,18 +643,18 @@ describes the request. Conversational requests (jokes, greetings, small talk)
 should stay `"meta"`: code that reads only `intent`, such as the MCP job
 manager, then keeps treating them as meta. Use `"research"` only if the agent
 should be treated as research everywhere. If you choose `"research"`, the
-orchestrator check in Step 13 still routes by `target`, but also check that
+orchestrator check in Step 14 still routes by `target`, but also check that
 nothing downstream expects a `depth_decision` for your route.
 ```
 
 ---
 
-### Step 12: Offer the Route in the Prompt
+### Step 13: Offer the Route in the Prompt
 
 Open `prompts/intent_classification.j2` and make two edits. Wrap each in
 `{% if my_agent_route_enabled %}` so nothing changes when the flag is off.
 
-**12a. Add a rule.** In the `#### IF INTENT IS "META":` section, after the
+**13a. Add a rule.** In the `#### IF INTENT IS "META":` section, after the
 existing numbered rules (and after the joke rule, if present), add:
 
 ```jinja
@@ -593,7 +667,7 @@ Describe the trigger clearly, with examples if needed. This sentence is what
 makes the model choose your route. `meta_response = null` matters because your
 agent writes the reply, not the classifier.
 
-**12b. Add the route to the output schema.** Extend the `"route"` line in the
+**13b. Add the route to the output schema.** Extend the `"route"` line in the
 `### OUTPUT FORMAT` block. Keep it on one line:
 
 ```jinja
@@ -609,11 +683,11 @@ dash) on the rule block so it adds no blank lines when disabled.
 
 ---
 
-### Step 13: Add the Orchestrator Node
+### Step 14: Add the Orchestrator Node
 
 Open `agent.py` (`ChatResearcherAgent`) and make six edits.
 
-**13a. Import the state model** with the other `deep_researcher_agent.agents...`
+**14a. Import the state model** with the other `deep_researcher_agent.agents...`
 imports at the top. Keep them in alphabetical order; Ruff's import check
 enforces it, and `uv run ruff check --fix` sorts them for you:
 
@@ -621,7 +695,7 @@ enforces it, and `uv run ruff check --fix` sorts them for you:
 from deep_researcher_agent.agents.my_agent.models import MyAgentState
 ```
 
-**13b. Add a constructor argument** to `__init__`, next to `nvidia_joke_fn`,
+**14b. Add a constructor argument** to `__init__`, next to `nvidia_joke_fn`,
 add it to the `Args:` docstring, and store it:
 
 ```python
@@ -632,7 +706,7 @@ add it to the `Args:` docstring, and store it:
         self.my_agent_fn = my_agent_fn
 ```
 
-**13c. Set the flag before calling the classifier.** In `_build_graph`, find
+**14c. Set the flag before calling the classifier.** In `_build_graph`, find
 `intent_classifier_node` and extend the `model_copy` update:
 
 ```python
@@ -646,7 +720,7 @@ add it to the `Args:` docstring, and store it:
                     ),
 ```
 
-**13d. Add the node** next to `nvidia_joke_node`. It trims history, calls the
+**14d. Add the node** next to `nvidia_joke_node`. It trims history, calls the
 agent, and returns the agent's last message. On failure it returns a short
 message and marks the workflow as failed, without exposing the exception text
 in the reply or the logs (a repository security rule):
@@ -670,7 +744,7 @@ in the reply or the logs (a repository security rule):
 If your state model has more fields (for example `data_sources`), fill them from
 `state` here, as `shallow_research_node` does.
 
-**13e. Route to the node.** In `route_after_orchestration`, add your check next
+**14e. Route to the node.** In `route_after_orchestration`, add your check next
 to the joke check. It must come **before** the `intent == "meta"` check, which
 otherwise ends the graph:
 
@@ -683,7 +757,7 @@ otherwise ends the graph:
                 return "END"
 ```
 
-**13f. Wire the graph.** At the end of `_build_graph`, register the node, add it
+**14f. Wire the graph.** At the end of `_build_graph`, register the node, add it
 to the `intent_classifier` conditional-edge map, and connect it to `END`:
 
 ```python
@@ -708,11 +782,11 @@ to the `intent_classifier` conditional-edge map, and connect it to `END`:
 
 ---
 
-### Step 14: Expose the Workflow Setting
+### Step 15: Expose the Workflow Setting
 
 Open `register.py` (in `chat_researcher/`) and make three edits.
 
-**14a. Add a config field** to `ChatDeepResearcherConfig`, next to
+**15a. Add a config field** to `ChatDeepResearcherConfig`, next to
 `nvidia_joke_agent`:
 
 ```python
@@ -722,14 +796,14 @@ Open `register.py` (in `chat_researcher/`) and make three edits.
     )
 ```
 
-**14b. Resolve the function** in `chat_deepresearcher_agent`, next to the
+**15b. Resolve the function** in `chat_deepresearcher_agent`, next to the
 `nvidia_joke_fn = ...` line:
 
 ```python
     my_agent_fn = await builder.get_function(config.my_agent) if config.my_agent else None
 ```
 
-**14c. Pass it to the agent** in the `ChatResearcherAgent(...)` call:
+**15c. Pass it to the agent** in the `ChatResearcherAgent(...)` call:
 
 ```python
         nvidia_joke_fn=nvidia_joke_fn.ainvoke if nvidia_joke_fn else None,
@@ -742,7 +816,7 @@ the `nvidia_joke_agent` row.
 
 ---
 
-### Step 15: Turn the Route On in a Config
+### Step 16: Turn the Route On in a Config
 
 In each config where the route should be active, add an LLM (or reuse an
 existing one), the agent function, and the workflow setting:
@@ -791,7 +865,7 @@ dotenv -f deploy/.env run nat validate --config_file configs/config_cli_default.
 
 ## Part 3: Verify the Route
 
-### Step 16: Add Routing Tests
+### Step 17: Add Routing Tests
 
 Add tests next to the existing joke-route tests so the route can't break
 silently. Copy and adapt these joke-route tests:
@@ -863,7 +937,7 @@ command with `--fix`.
 
 ---
 
-### Step 17: Run It End-to-End
+### Step 18: Run It End-to-End
 
 Send one request that should reach your agent and one that should not:
 
@@ -886,12 +960,15 @@ that line in the output. Remove it afterwards.
 
 | Symptom | Likely cause and fix |
 |---|---|
-| `nat run` fails with an unknown `_type: my_agent` | The entry point is missing or not installed. Check Step 6, run `uv sync --group dev`, and confirm with `nat info components -t function`. |
-| `nat run` fails on the workflow's `my_agent` field | The field from Step 14a is missing, or the YAML is wrong. The workflow field must name a function under `functions`. |
-| Requests never reach the agent and get a meta reply | The flag is off (check that `my_agent` is set under `workflow`), Step 13c is missing, or the prompt rule from Step 12a is too vague. Make the trigger more explicit. |
-| The classifier picks the route but the graph ends without your agent's reply | Step 13e's check comes after the `intent == "meta"` check, or Step 13f's edge map is missing `"my_agent"`. |
+| `ImportError: cannot import name 'MyAgentState' from '...my_agent.models' (unknown location)` | `models/__init__.py` is missing or does not re-export the class. Add it as shown in Step 2. |
+| `nat run` fails with `LLM \`my_agent_llm\` not found` | The function's `llm:` value doesn't match any key under `llms:`. The names must match exactly. `nat validate` does not catch this; only `nat run` does. |
+| `PromptError: Prompt file not found` in the MCP image or another wheel install, but not locally | The `[tool.setuptools.package-data]` line from Step 7b is missing. Add it and rebuild the image. |
+| `nat run` fails with an unknown `_type: my_agent` | The entry point is missing or not installed. Check Step 7, run `uv sync --group dev`, and confirm with `nat info components -t function`. |
+| `nat run` fails on the workflow's `my_agent` field | The field from Step 15a is missing, or the YAML is wrong. The workflow field must name a function under `functions`. |
+| Requests never reach the agent and get a meta reply | The flag is off (check that `my_agent` is set under `workflow`), Step 14c is missing, or the prompt rule from Step 13a is too vague. Make the trigger more explicit. |
+| The classifier picks the route but the graph ends without your agent's reply | Step 14e's check comes after the `intent == "meta"` check, or Step 14f's edge map is missing `"my_agent"`. |
 | `test_prompt_exposes_only_semantic_route_not_derived_workflow_fields` fails | The prompt changed when all flags are off. Make sure every addition is inside `{% if my_agent_route_enabled %}` and the rule block uses `{%-`. |
-| The reply is `I couldn't complete that request. Please try again.` | The agent raised an exception. The log line `My agent failed (error_type=...)` shows the type. Run the agent standalone (Step 8) to debug it. |
+| The reply is `I couldn't complete that request. Please try again.` | The agent raised an exception. The log line `My agent failed (error_type=...)` shows the type. Run the agent standalone (Step 9) to debug it. |
 | The first response takes a minute or more | Hosted model latency. Later requests are usually faster. |
 
 ## Where the Route Does Not Apply
@@ -916,8 +993,10 @@ pipelines:
 - [ ] `MyAgentState` defined in `models/state.py` and exported from `models/__init__.py`
 - [ ] Prompt written in `prompts/`, including what to do for out-of-scope requests
 - [ ] `MyAgent.run` implemented
-- [ ] `my_agent` and `my_agent_workflow` registered in `register.py`; `__init__.py` imports `register`
+- [ ] `my_agent` and `my_agent_workflow` registered in `register.py`
+- [ ] Package `__init__.py` imports `register` (with `# noqa: F401`) and re-exports both functions
 - [ ] Entry point added to `pyproject.toml`; `nat info components` lists both types
+- [ ] `prompts/*.j2` added to `[tool.setuptools.package-data]`; the wheel check lists the prompt
 - [ ] Standalone config created; agent unit tests pass; a standalone run works
 
 **Part 2: Connect to the chat pipeline**
