@@ -23,6 +23,7 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel
 
 from deep_researcher_agent.knowledge import AvailableDocument
+from deep_researcher_agent.knowledge.image_attachments import ImageAttachment
 
 from ..request_context import DatabaseName
 from .catalog import CatalogRoutingResponse
@@ -74,6 +75,11 @@ class ChatResearcherState(BaseModel):
         nvidia_joke_route_enabled: Whether the intent classifier may route joke
             requests to the NVIDIA joke agent. Set by the orchestrator when an
             ``nvidia_joke_agent`` is configured; otherwise jokes stay meta.
+        attached_images: Images uploaded in this session since the previous
+            turn, claimed for this turn. When set and a vision agent is
+            configured, the turn goes to the vision agent without intent
+            classification. Holds file references, never image bytes; reset at
+            each turn boundary.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
@@ -97,3 +103,4 @@ class ChatResearcherState(BaseModel):
     workflow_outcome: WorkflowOutcome | None = None
     nvidia_joke_route_enabled: bool = False
     nvidia_poem_route_enabled: bool = False
+    attached_images: list[ImageAttachment] | None = None

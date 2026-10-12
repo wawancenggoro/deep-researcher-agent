@@ -18,3 +18,4 @@ These use NeMo Agent Toolkit's `@register_function` decorator and Python entry p
 - **[Adding a Tool](./adding-a-tool.md)** — Build and register a new tool or function that agents can call
 - **[Adding a Data Source](./adding-a-data-source.md)** — Create a new search or retrieval plugin
 - **[Adding a New Agent](./adding-a-new-agent.md)** — Build a new agent and route chat requests to it through the intent classifier
+- **[Adding a Vision Agent](./adding-a-vision-agent.md)** — Answer uploaded images with a vision-language model, from the UI changes to the agent

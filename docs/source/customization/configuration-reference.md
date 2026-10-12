@@ -737,6 +737,7 @@ catalog when the provider offer or deployment changes.
 | `hybrid_research_agent` | `str` or `None` | `None` | Optional function reference invoked when catalog-aware routing selects Hybrid research. |
 | `nvidia_joke_agent` | `str` or `None` | `None` | Optional function reference to an `nvidia_joke_agent`. When set, the intent classifier routes joke requests to it. Refer to [Adding a New Agent](../extending/adding-a-new-agent.md). |
 | `nvidia_poem_agent` | `str` or `None` | `None` | Optional function reference to an `nvidia_poem_agent`. When set, the intent classifier routes poem requests to it. Refer to [Adding a New Agent](../extending/adding-a-new-agent.md). |
+| `vision_agent` | `str` or `None` | `None` | Optional function reference to a `vision_agent`. When set, a chat turn that follows an image upload in the same session goes straight to it, skipping intent classification, and the image is sent base64-encoded to the agent's vision-language model. Requires the LlamaIndex knowledge backend and a single-replica deployment. |
 | `max_history` | `int` | `20` | Maximum number of messages to keep in conversation history before trimming. |
 | `checkpoint_db` | `str` | `./checkpoints.db` | SQLite path or PostgreSQL DSN for persistent conversation checkpoints. |
 | `relay` | `object` | enabled defaults | NeMo Relay logging, Observability v3 ATOF/OTEL destinations, PII redaction, and pricing sources. Relay instrumentation itself has no workflow disable switch. See [Observability with NeMo Relay](../deployment/observability.md). |

@@ -353,6 +353,10 @@ class ChatDeepResearcherConfig(FunctionBaseConfig, name="chat_deepresearcher_age
         default=None,
         description="Optional NVIDIA poem agent; when set, the intent classifier routes poem requests to it",
     )
+    vision_agent: FunctionRef | None = Field(
+        default=None,
+        description="Optional vision agent; when set, turns with uploaded images go to it",
+    )
     checkpoint_db: str = Field(
         default="./checkpoints.db",
         description="SQLite database path or Postgres DSN for persistent checkpoints.",
@@ -438,6 +442,7 @@ async def chat_deepresearcher_agent(config: ChatDeepResearcherConfig, builder: B
     )
     nvidia_joke_fn = await builder.get_function(config.nvidia_joke_agent) if config.nvidia_joke_agent else None
     nvidia_poem_fn = await builder.get_function(config.nvidia_poem_agent) if config.nvidia_poem_agent else None
+    vision_fn = await builder.get_function(config.vision_agent) if config.vision_agent else None
 
     # Get deep research tools for early validation
     deep_research_config = builder.get_function_config("deep_research_agent")
@@ -701,6 +706,7 @@ async def chat_deepresearcher_agent(config: ChatDeepResearcherConfig, builder: B
         hybrid_research_job_submitter=hybrid_research_job_submitter,
         nvidia_joke_fn=nvidia_joke_fn.ainvoke if nvidia_joke_fn else None,
         nvidia_poem_fn=nvidia_poem_fn.ainvoke if nvidia_poem_fn else None,
+        vision_fn=vision_fn.ainvoke if vision_fn else None,
         checkpointer=checkpointer,
         validate_deep_research_tools_fn=validate_deep_research_tools,
     )
@@ -828,6 +834,20 @@ async def chat_deepresearcher_agent(config: ChatDeepResearcherConfig, builder: B
                 log_identifier_ref(effective_report_job_id),
             )
 
+        # Claim images uploaded in this session since the last turn (conversation_id =
+        # collection_name). Only claimed when a vision agent can answer them.
+        attached_images = None
+        if vision_fn is not None and client_conversation_id:
+            from deep_researcher_agent.knowledge.image_attachments import claim_image_attachments
+
+            attached_images = claim_image_attachments(client_conversation_id) or None
+            if attached_images:
+                logger.info(
+                    "Claimed %d uploaded image(s) for collection_ref=%s",
+                    len(attached_images),
+                    log_identifier_ref(client_conversation_id),
+                )
+
         # Set session-scoped source registry for citation verification across turns.
         # When no conversation ID is available, get_or_create_session_registry returns a
         # fresh per-request registry to prevent anonymous sessions from sharing state.
@@ -842,6 +862,7 @@ async def chat_deepresearcher_agent(config: ChatDeepResearcherConfig, builder: B
                 available_documents=available_documents,
                 skip_clarifier=skip_clarifier,
                 active_report_job_id=effective_report_job_id,
+                attached_images=attached_images,
             )
             result = await agent.run(state, thread_id=nat_context_conversation_id)
         finally:

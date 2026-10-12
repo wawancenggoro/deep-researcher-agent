@@ -23,6 +23,7 @@ This is the main orchestrator agent that coordinates the full research workflow:
 4. Optional escalation from shallow to deep
 """
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable
@@ -46,6 +47,8 @@ from deep_researcher_agent.agents.deep_researcher.models import DeepResearchAgen
 from deep_researcher_agent.agents.nvidia_joke.models import NvidiaJokeAgentState
 from deep_researcher_agent.agents.nvidia_poem.models import NvidiaPoemAgentState
 from deep_researcher_agent.agents.shallow_researcher.models import ShallowResearchAgentState
+from deep_researcher_agent.agents.vision.agent import encode_image_file
+from deep_researcher_agent.agents.vision.models import VisionAgentState
 from deep_researcher_agent.common import get_latest_user_query
 from deep_researcher_agent.common.citation_verification import EmptySourceRegistryError
 from deep_researcher_agent.common.logging_utils import log_content_metadata
@@ -138,6 +141,7 @@ class ChatResearcherAgent:
         hybrid_research_fn: Callable[[ChatResearcherState], Awaitable[dict[str, Any]]] | None = None,
         nvidia_joke_fn: Callable[[NvidiaJokeAgentState], Awaitable[NvidiaJokeAgentState]] | None = None,
         nvidia_poem_fn: Callable[[NvidiaPoemAgentState], Awaitable[NvidiaPoemAgentState]] | None = None,
+        vision_fn: Callable[[VisionAgentState], Awaitable[VisionAgentState]] | None = None,
         checkpointer: BaseCheckpointSaver | None = None,
         validate_deep_research_tools_fn: Callable[[list[str] | None], tuple[bool, str]] | None = None,
     ) -> None:
@@ -162,6 +166,8 @@ class ChatResearcherAgent:
                 route joke requests to it instead of answering them as meta.
             nvidia_poem_fn: Optional NVIDIA poem agent. When set, the intent classifier may
                 route poem requests to it instead of answering them as meta.
+            vision_fn: Optional vision agent. When set, turns with attached images go to it
+                directly, skipping intent classification.
             checkpointer: Optional checkpointer for persistent state (defaults to MemorySaver)
         """
         self.intent_classifier_fn = intent_classifier_fn
@@ -181,6 +187,7 @@ class ChatResearcherAgent:
         self.hybrid_research_fn = hybrid_research_fn
         self.nvidia_joke_fn = nvidia_joke_fn
         self.nvidia_poem_fn = nvidia_poem_fn
+        self.vision_fn = vision_fn
         self.checkpointer = checkpointer
         self.validate_deep_research_tools_fn = validate_deep_research_tools_fn
 
@@ -190,6 +197,10 @@ class ChatResearcherAgent:
         """Build the LangGraph workflow."""
 
         async def intent_classifier_node(state: ChatResearcherState) -> dict[str, Any]:
+            # An uploaded image always goes to the vision agent. Skipping the classifier saves
+            # an LLM call and keeps image references out of the routing prompt.
+            if state.attached_images and self.vision_fn is not None:
+                return {"user_intent": IntentResult(intent="research", target="vision")}
             try:
                 return await run_agent(
                     "intent_classifier",
@@ -291,6 +302,30 @@ class ChatResearcherAgent:
                 logger.error("NVIDIA poem agent failed (error_type=%s)", type(error).__name__)
                 return {
                     "messages": [AIMessage(content="I couldn't come up with a poem right now. Please try again.")],
+                    "workflow_outcome": _research_workflow_failure(),
+                }
+
+        async def vision_node(state: ChatResearcherState) -> dict[str, Any]:
+            try:
+                if self.vision_fn is None:
+                    raise RuntimeError("Vision agent is not configured")
+                attachments = state.attached_images or []
+                images = await asyncio.gather(
+                    *(asyncio.to_thread(encode_image_file, a.file_path, a.file_name, a.mime_type) for a in attachments)
+                )
+                trimmed_messages: list[BaseMessage] = trim_message_history(state.messages, self.max_history)
+                result = await self.vision_fn(VisionAgentState(messages=trimmed_messages, images=list(images)))
+                return {"messages": [AIMessage(content=result.messages[-1].content)]}
+            except OSError as error:
+                logger.warning("Vision agent could not read an uploaded image (error_type=%s)", type(error).__name__)
+                return {
+                    "messages": [AIMessage(content="I couldn't read the uploaded image. Please upload it again.")],
+                    "workflow_outcome": _research_workflow_failure(),
+                }
+            except Exception as error:
+                logger.error("Vision agent failed (error_type=%s)", type(error).__name__)
+                return {
+                    "messages": [AIMessage(content="I couldn't analyze the image right now. Please try again.")],
                     "workflow_outcome": _research_workflow_failure(),
                 }
 
@@ -612,6 +647,8 @@ class ChatResearcherAgent:
                 return "nvidia_joke"
             if state.user_intent and state.user_intent.target == "nvidia_poem":
                 return "nvidia_poem"
+            if state.user_intent and state.user_intent.target == "vision":
+                return "vision"
             if state.user_intent and state.user_intent.intent == "meta":
                 return "END"
             # A report is available either as an async job (UI/server) or produced inline in this
@@ -673,6 +710,7 @@ class ChatResearcherAgent:
         graph.add_node("hybrid_research", hybrid_research_node)
         graph.add_node("nvidia_joke", nvidia_joke_node)
         graph.add_node("nvidia_poem", nvidia_poem_node)
+        graph.add_node("vision", vision_node)
 
         graph.set_entry_point("intent_classifier")
 
@@ -688,6 +726,7 @@ class ChatResearcherAgent:
                 "hybrid_research": "hybrid_research",
                 "nvidia_joke": "nvidia_joke",
                 "nvidia_poem": "nvidia_poem",
+                "vision": "vision",
             },
         )
 
@@ -706,6 +745,7 @@ class ChatResearcherAgent:
         graph.add_edge("hybrid_research", END)
         graph.add_edge("nvidia_joke", END)
         graph.add_edge("nvidia_poem", END)
+        graph.add_edge("vision", END)
 
         return graph.compile(checkpointer=self.checkpointer)
 
@@ -730,6 +770,7 @@ class ChatResearcherAgent:
                 "database_name": state.get("database_name"),
                 "catalog_context": None,
                 "catalog_request_id": None,
+                "attached_images": state.get("attached_images"),
             }
             messages = state.get("messages", [])
         else:
@@ -745,6 +786,8 @@ class ChatResearcherAgent:
                 "active_report_job_id": state.active_report_job_id,
                 "catalog_context": None,
                 "catalog_request_id": None,
+                # Set every turn so images from an earlier turn never carry over via the checkpoint.
+                "attached_images": state.attached_images,
                 # Pass through; the keep-if-set reducer preserves a prior in-session report when
                 # this turn supplies None, so report follow-up works across turns without a job.
                 "last_report_markdown": state.last_report_markdown,
