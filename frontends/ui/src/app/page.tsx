@@ -15,16 +15,19 @@
 
 import { type ReactNode, Suspense } from 'react'
 import { useAuth } from '@/adapters/auth'
+import { useAppConfig } from '@/shared/context'
 import { MainLayout } from '@/features/layout'
 
 const HomeContent = (): ReactNode => {
   const { user, isAuthenticated, isLoading, authRequired, signIn, signOut } = useAuth()
+  const { loginEnabled = false } = useAppConfig()
 
   return (
     <MainLayout
       isAuthenticated={isAuthenticated}
       isLoading={isLoading}
       authRequired={authRequired}
+      loginEnabled={loginEnabled}
       user={
         isAuthenticated
           ? {

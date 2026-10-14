@@ -42,6 +42,8 @@ interface MainLayoutProps {
   isLoading?: boolean
   /** Whether authentication is required (false = using default user) */
   authRequired?: boolean
+  /** Whether the gateway's username/password login is on (shows Sign Out without OAuth) */
+  loginEnabled?: boolean
   /** User information for AppBar */
   user?: {
     name?: string
@@ -63,6 +65,7 @@ export const MainLayout: FC<MainLayoutProps> = ({
   isAuthenticated = false,
   isLoading = false,
   authRequired = false,
+  loginEnabled = false,
   user,
   onSignIn,
   onSignOut,
@@ -170,6 +173,7 @@ export const MainLayout: FC<MainLayoutProps> = ({
         sessionTitle={currentConversation?.title}
         isAuthenticated={isAuthenticated}
         authRequired={authRequired}
+        loginEnabled={loginEnabled}
         user={user}
         onNewSession={handleNewSession}
         isNewSessionDisabled={isNavigationBlocked}

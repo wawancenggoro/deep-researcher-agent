@@ -17,6 +17,8 @@
  *
  * Environment:
  *   BACKEND_URL - Backend service URL (e.g., http://backend:8000)
+ *   LOGIN_USERNAME, LOGIN_PASSWORD - When both are set, require signing in at /login
+ *     (see login-gate.js)
  *   PORT - Gateway port (default: 3000)
  *   NEXT_INTERNAL_URL - Next.js server URL (default: http://localhost:3001)
  */
@@ -25,6 +27,7 @@ const http = require('http')
 const httpProxy = require('http-proxy')
 const { parse } = require('url')
 const { forwardWebSocketAuthCookie } = require('./websocket-cookie')
+const loginGate = require('./login-gate')
 
 const dev = process.env.NODE_ENV !== 'production'
 const hostname = process.env.HOSTNAME || '0.0.0.0'
@@ -126,6 +129,11 @@ const startServer = async () => {
       return
     }
 
+    // Login gate: redirects or rejects requests without a session when enabled.
+    if (await loginGate.gateHttpRequest(req, res, parsedUrl.pathname || '/', parsedUrl.query)) {
+      return
+    }
+
     if (dev) {
       // Development: proxy everything to Next.js dev server
       nextProxy.web(req, res, { target: NEXT_INTERNAL_URL })
@@ -154,6 +162,11 @@ const startServer = async () => {
       return
     }
     const pathname = parsedUrl.pathname || '/'
+
+    // Login gate: covers /websocket, which goes straight to the backend.
+    if (loginGate.gateUpgrade(req, socket, pathname)) {
+      return
+    }
 
     // Proxy /websocket to backend
     if (pathname === '/websocket' || pathname.startsWith('/websocket')) {
@@ -200,6 +213,12 @@ const startServer = async () => {
   server.requestTimeout = 0
 
   server.listen(port, hostname, () => {
+    if (loginGate.isLoginEnabled()) {
+      console.log('[Login] Sign-in required (LOGIN_USERNAME/LOGIN_PASSWORD are set)')
+      if (!process.env.LOGIN_SESSION_SECRET && !process.env.NEXTAUTH_SECRET) {
+        console.log('[Login] No LOGIN_SESSION_SECRET set; sessions end when the server restarts')
+      }
+    }
     console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Frontend: http://localhost:${port}

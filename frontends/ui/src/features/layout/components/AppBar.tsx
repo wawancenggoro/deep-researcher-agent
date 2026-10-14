@@ -29,6 +29,8 @@ interface AppBarProps {
   isAuthenticated?: boolean
   /** Whether authentication is required (false = using default user) */
   authRequired?: boolean
+  /** Whether the gateway's username/password login is on (shows Sign Out without OAuth) */
+  loginEnabled?: boolean
   /** User info for avatar */
   user?: {
     name?: string
@@ -53,6 +55,7 @@ export const AppBar: FC<AppBarProps> = memo(function AppBar({
   sessionTitle = '',
   isAuthenticated = false,
   authRequired = false,
+  loginEnabled = false,
   user,
   onNewSession,
   isNewSessionDisabled = false,
@@ -179,7 +182,7 @@ export const AppBar: FC<AppBarProps> = memo(function AppBar({
               side="bottom"
               align="end"
               className="bg-surface-base"
-              slotContent={<AuthDisabledContent />}
+              slotContent={<AuthDisabledContent loginEnabled={loginEnabled} />}
             >
               <Button
                 kind="tertiary"
@@ -398,7 +401,7 @@ const UserDropdownContent: FC<UserDropdownContentProps> = ({ user, onSignOut }) 
  * Content shown when authentication is disabled
  * Displays info message instead of sign out option
  */
-const AuthDisabledContent: FC = () => {
+const AuthDisabledContent: FC<{ loginEnabled?: boolean }> = ({ loginEnabled = false }) => {
   return (
     <Flex direction="col" gap="3" className="min-w-[240px] p-4">
       {/* User info section */}
@@ -411,13 +414,15 @@ const AuthDisabledContent: FC = () => {
         </Flex>
       </Flex>
 
-      {/* Info message */}
-      <Flex align="center" gap="2" className="rounded border border-base p-3">
-        <Info className="h-4 w-4 shrink-0 text-[var(--text-color-subtle)]" />
-        <Text kind="body/regular/sm" className="text-subtle">
-          Authentication Not Configured
-        </Text>
-      </Flex>
+      {/* Info message (hidden when the gateway login protects the UI) */}
+      {!loginEnabled && (
+        <Flex align="center" gap="2" className="rounded border border-base p-3">
+          <Info className="h-4 w-4 shrink-0 text-[var(--text-color-subtle)]" />
+          <Text kind="body/regular/sm" className="text-subtle">
+            Authentication Not Configured
+          </Text>
+        </Flex>
+      )}
 
       <Divider />
 
@@ -426,6 +431,28 @@ const AuthDisabledContent: FC = () => {
       <Divider />
 
       <DocumentationSection />
+
+      {/* Sign out of the gateway login (login-gate.js clears the session cookie) */}
+      {loginEnabled && (
+        <>
+          <Divider />
+          <form method="post" action="/api/logout">
+            <Button
+              kind="secondary"
+              size="small"
+              type="submit"
+              className="w-full"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <Flex align="center" justify="center" gap="2">
+                <Logout className="h-4 w-4" />
+                <Text kind="label/regular/sm">Sign Out</Text>
+              </Flex>
+            </Button>
+          </form>
+        </>
+      )}
     </Flex>
   )
 }
