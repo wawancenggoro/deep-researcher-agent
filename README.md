@@ -21,7 +21,7 @@ limitations under the License.
 This repository is a fork of the NVIDIA Deep Researcher Agent Blueprint by Wawan Cenggoro. The following features are added in this fork on top of the original repository:
 * Instructions on adding a new agent and a reference implementation (NVIDIA Joke Agent) (main commit: [a60ef5b](https://github.com/wawancenggoro/deep-researcher-agent/commit/a60ef5bd6d37e733b175271e237d48e20ae832e8))
 * A second reference implementation on adding a new agent (NVIDIA Poem Agent) (main commit: [d8e8da6](https://github.com/wawancenggoro/deep-researcher-agent/commit/d8e8da670e1ee99e441d02d450edcd80846d6b3d))
-* A UI modification to upload image and the addition of a Vision Language Model (VLM) Agent to read the image along with the text prompt (main commit: [f3addfa](https://github.com/wawancenggoro/deep-researcher-agent/commit/f3addfaab970eb1aaf318f55f0bf9dc12c093625) and [78f5a5d](https://github.com/wawancenggoro/deep-researcher-agent/commit/78f5a5d00803d916d3114364542feab84062cc52)). The VLM agent use the `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` model instead of the `nvidia/nemotron-3.5-lightning-30b-a3b` model
+* A UI modification to upload image and the addition of a Vision Agent that uses Vision Language Model (VLM) to read the image along with the text prompt (main commit: [f3addfa](https://github.com/wawancenggoro/deep-researcher-agent/commit/f3addfaab970eb1aaf318f55f0bf9dc12c093625) and [78f5a5d](https://github.com/wawancenggoro/deep-researcher-agent/commit/78f5a5d00803d916d3114364542feab84062cc52)). The VLM agent use the `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` model instead of the `nvidia/nemotron-3.5-lightning-30b-a3b` model
 <br>
 
 > **🏆 BENCHMARK NOTE 🏆**
