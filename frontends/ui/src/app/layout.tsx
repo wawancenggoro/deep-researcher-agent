@@ -37,6 +37,7 @@ const getAppConfig = (): AppConfig => ({
   authProviderId: AUTH_PROVIDER_ID,
   sessionRefreshIntervalSeconds: Math.max(60, TOKEN_REFRESH_BUFFER_SECONDS - 60),
   fileUpload: getFileUploadConfigFromEnv(process.env),
+  loginEnabled: Boolean(process.env.LOGIN_USERNAME && process.env.LOGIN_PASSWORD),
 })
 
 interface RootLayoutProps {

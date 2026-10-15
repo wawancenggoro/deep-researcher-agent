@@ -47,6 +47,8 @@ export interface AppConfig {
   sessionRefreshIntervalSeconds: number
   /** File upload validation configuration */
   fileUpload: FileUploadConfig
+  /** Whether the gateway's username/password login is on (LOGIN_USERNAME and LOGIN_PASSWORD set) */
+  loginEnabled?: boolean
 }
 
 const AppConfigContext = createContext<AppConfig | null>(null)

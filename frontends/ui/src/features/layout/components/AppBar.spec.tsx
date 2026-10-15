@@ -244,5 +244,18 @@ describe('AppBar', () => {
 
       expect(screen.getByText('My Research Session')).toBeInTheDocument()
     })
+
+    test('shows a gateway Sign Out form when the username/password login is on', async () => {
+      const user = userEvent.setup()
+      render(<AppBar isAuthenticated={true} authRequired={false} loginEnabled={true} />)
+
+      await user.click(screen.getByRole('button', { name: /default user/i }))
+
+      const signOut = screen.getByRole('button', { name: /sign out/i })
+      expect(signOut).toHaveAttribute('type', 'submit')
+      expect(signOut.closest('form')).toHaveAttribute('action', '/api/logout')
+      expect(signOut.closest('form')).toHaveAttribute('method', 'post')
+      expect(screen.queryByText('Authentication Not Configured')).not.toBeInTheDocument()
+    })
   })
 })
